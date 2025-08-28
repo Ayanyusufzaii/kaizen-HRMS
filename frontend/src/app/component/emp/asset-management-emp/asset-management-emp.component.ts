@@ -4,6 +4,14 @@ import { AuthService } from '../../services/auth.service';
 import { Router } from '@angular/router';
 import { DatePipe } from '@angular/common';
 
+interface ActivityLog {
+  date: Date;
+  user: string;
+  message: string;
+  type: string;
+  attachments: string[];
+}
+
 @Component({
   selector: 'app-asset-management-emp',
   templateUrl: './asset-management-emp.component.html',
@@ -14,6 +22,7 @@ export class AssetManagementEmpComponent implements OnInit {
   activeTab = 'my-assets';
   isSidebarMinimized = false;
   isRaiseTicketModalOpen = false;
+  isActivityLogModalOpen = false;
   selectedFile: File | null = null;
   
   user = { name: 'Employee', email: '' };
@@ -32,6 +41,80 @@ export class AssetManagementEmpComponent implements OnInit {
   hrResponses = [
     { ticketId: 'TKT002', deviceName: 'Logitech Mouse', responseDate: new Date('2023-06-18'), hrMessage: 'We have ordered a replacement mouse. It will arrive in 3-5 business days.', status: 'In Progress' }
   ];
+  
+  // Activity log data for each ticket
+  activityLogs: { [key: string]: ActivityLog[] } = {
+    'TKT001': [
+      { 
+        date: new Date('2023-05-10 10:30:00'), 
+        user: 'Employee', 
+        message: 'Ticket created: Keyboard not working properly',
+        type: 'ticket_created',
+        attachments: []
+      },
+      { 
+        date: new Date('2023-05-10 11:15:00'), 
+        user: 'HR Manager', 
+        message: 'Ticket acknowledged and under review',
+        type: 'hr_response',
+        attachments: []
+      },
+      { 
+        date: new Date('2023-05-11 09:45:00'), 
+        user: 'Employee', 
+        message: 'Uploaded video showing the keyboard issue',
+        type: 'employee_update',
+        attachments: ['keyboard_issue.mp4']
+      }
+    ],
+    'TKT002': [
+      { 
+        date: new Date('2023-06-15 14:20:00'), 
+        user: 'Employee', 
+        message: 'Ticket created: Scroll wheel malfunctioning',
+        type: 'ticket_created',
+        attachments: []
+      },
+      { 
+        date: new Date('2023-06-15 15:30:00'), 
+        user: 'HR Manager', 
+        message: 'Requested more details about the issue',
+        type: 'hr_response',
+        attachments: []
+      },
+      { 
+        date: new Date('2023-06-16 10:15:00'), 
+        user: 'Employee', 
+        message: 'Provided detailed description of the scroll wheel issue',
+        type: 'employee_update',
+        attachments: []
+      },
+      { 
+        date: new Date('2023-06-18 11:45:00'), 
+        user: 'HR Manager', 
+        message: 'We have ordered a replacement mouse. It will arrive in 3-5 business days.',
+        type: 'hr_response',
+        attachments: []
+      },
+      { 
+        date: new Date('2023-06-16 10:15:00'), 
+        user: 'Employee', 
+        message: 'Provided detailed description of the scroll wheel issue',
+        type: 'employee_update',
+        attachments: []
+      },
+      { 
+        date: new Date('2023-06-18 11:45:00'), 
+        user: 'HR Manager', 
+        message: 'We have ordered a replacement mouse. It will arrive in 3-5 business days.',
+        type: 'hr_response',
+        attachments: []
+      }
+    ]
+  };
+  
+  selectedTicket: any = null;
+  selectedTicketActivities: ActivityLog[] = [];
   
   ticketRequest = {
     deviceId: '',
@@ -71,6 +154,18 @@ export class AssetManagementEmpComponent implements OnInit {
   closeRaiseTicketModal(): void {
     this.isRaiseTicketModalOpen = false;
     this.resetTicketForm();
+  }
+
+  openActivityLogModal(ticket: any): void {
+    this.selectedTicket = ticket;
+    this.selectedTicketActivities = this.activityLogs[ticket.ticketId] || [];
+    this.isActivityLogModalOpen = true;
+  }
+
+  closeActivityLogModal(): void {
+    this.isActivityLogModalOpen = false;
+    this.selectedTicket = null;
+    this.selectedTicketActivities = [];
   }
 
   resetTicketForm(): void {
