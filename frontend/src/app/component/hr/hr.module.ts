@@ -11,13 +11,15 @@ import { FormsModule } from '@angular/forms';
   declarations: [
     HrDashboardComponent,
     HrSideNavbarComponent,
-    AssetManagementHrComponent ,
+        AssetManagementHrComponent ,
+
   ],
   imports: [
     CommonModule,
     RouterModule,
     FormsModule,
     MatButtonModule,
+
   ],
   exports: [
     HrDashboardComponent,
