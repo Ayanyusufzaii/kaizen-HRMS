@@ -1,222 +1,376 @@
-<!-- Modern HRMS Asset Management Dashboard -->
-<div class="flex min-h-screen bg-gray-50">
-  <!-- Sidebar would go here -->
-  <app-hr-side-navbar class="w-64"></app-hr-side-navbar> 
+<div class="flex h-screen bg-gray-50">
+  <!-- Main HR Sidebar -->
+  <app-hr-side-navbar class="w-64"></app-hr-side-navbar>
 
-  <!-- Main Content -->
+  <!-- Page Layout -->
   <div class="flex-1 flex flex-col transition-all duration-300 ease-in-out overflow-hidden">
-    <header class="bg-white backdrop-blur-sm bg-opacity-90 border-b border-slate-200/60 shadow-sm px-6 py-4 sticky top-0 z-10">
-      <div class="max-w-20xl mx-auto flex justify-between items-center">
-        <!-- Left side: Header Title -->
-        <div>
-          <h1 class="text-xl font-semibold text-slate-800">
-            Asset Management
-          </h1>
-          <div class="flex items-center text-sm text-slate-500 mt-0.5">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span>{{currentDate | date:'fullDate'}}</span>
-          </div>
-        </div>
 
-        <!-- Right side: User Profile (placeholder) -->
-        <div class="flex items-center">
-          <!-- User profile section can be added here if needed -->
-        </div>
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200/60 shadow-sm px-6 py-4 sticky top-0 z-10">
+      <div class="flex justify-between items-center">
+        <h1 class="text-xl font-semibold text-slate-800">Asset Management</h1>
+        <span class="text-sm text-slate-500">{{ currentDate | date:'fullDate' }}</span>
       </div>
     </header>
 
-    <!-- Main Content Body -->
-    <div class="flex-1 p-6 bg-gray-50 overflow-auto">
+    <!-- Page Content with Left Sub-Nav -->
+    <div class="flex flex-1 overflow-hidden">
 
-      <!-- Asset Status Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <!-- Vendor Management Tile -->
-        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition duration-300 hover:shadow-md">
-          <div class="h-2 bg-blue-600"></div>
+      <!-- Secondary Sidebar -->
+      <aside class="w-52 bg-white border-r border-gray-200 p-4 space-y-1 ">
+        <button (click)="activeSection = 'vendors'" 
+                [ngClass]="{ 'bg-indigo-100 text-indigo-700': activeSection==='vendors' }"
+                class="w-full text-left px-4 py-2 rounded-lg hover:bg-indigo-50 transition">
+          Vendor Management
+        </button>
+        <button (click)="activeSection = 'assets'" 
+                [ngClass]="{ 'bg-indigo-100 text-indigo-700': activeSection==='assets' }"
+                class="w-full text-left px-4 py-2 rounded-lg hover:bg-indigo-50 transition">
+          All Assets
+        </button>
+        <button (click)="activeSection = 'tickets'" 
+                [ngClass]="{ 'bg-indigo-100 text-indigo-700': activeSection==='tickets' }"
+                class="w-full text-left px-4 py-2 rounded-lg hover:bg-indigo-50 transition">
+          Ticket Management
+        </button>
+        <button (click)="activeSection = 'logs'" 
+                [ngClass]="{ 'bg-indigo-100 text-indigo-700': activeSection==='logs' }"
+                class="w-full text-left px-4 py-2 rounded-lg hover:bg-indigo-50 transition">
+          Activity Logs
+        </button>
+      </aside>
+
+      <!-- Main Dynamic Section -->
+      <main class="flex-1 p-6 overflow-auto">
+        
+        <!-- Vendor Management -->
+        <section *ngIf="activeSection === 'vendors'" class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+          <div class="h-2 bg-indigo-600"></div>
           <div class="p-6">
-            <div class="flex items-center space-x-3 mb-4">
-              <div class="bg-blue-100 p-2 rounded-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-2m2-0h-2m0 0H5m2 0h2M9 7h6m-6 4h6m-6 4h6" />
+            <div class="flex items-center space-x-3 mb-6">
+              <div class="bg-indigo-100 p-2 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
               <h3 class="font-bold text-xl text-gray-800">Vendor Management</h3>
             </div>
-            <p class="text-gray-600 mb-4">Manage asset vendors and suppliers</p>
-            <div class="mt-4">
-              <button class="inline-flex items-center justify-center px-4 py-2 border border-transparent font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200 text-sm">
-                Manage
-              </button>
+            
+            <button (click)="openAddVendorModal()" class="mb-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+              + Add Vendor
+            </button>
+            
+            <div class="overflow-x-auto">
+              <table class="min-w-full table-auto border-collapse">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vendor Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr *ngFor="let v of vendorList" class="hover:bg-gray-50 transition">
+                    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ v.name }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">{{ v.contact }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">{{ v.email }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">
+                      <button class="text-indigo-600 hover:text-indigo-800 mr-3">Edit</button>
+                      <button class="text-red-600 hover:text-red-800">Delete</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
-        </div>
+        </section>
 
-        <!-- Employee Assets Tile -->
-        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition duration-300 hover:shadow-md">
-          <div class="h-2 bg-purple-600"></div>
+        <!-- All Assets -->
+        <section *ngIf="activeSection === 'assets'">
+          <h2 class="text-lg font-semibold mb-4">All Assets</h2>
+          <ng-container *ngTemplateOutlet="assetsTable"></ng-container>
+        </section>
+
+        <!-- Ticket Management -->
+        <section *ngIf="activeSection === 'tickets'" class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+          <div class="h-2 bg-indigo-600"></div>
           <div class="p-6">
-            <div class="flex items-center space-x-3 mb-4">
-              <div class="bg-purple-100 p-2 rounded-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            <div class="flex items-center space-x-3 mb-6">
+              <div class="bg-indigo-100 p-2 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 class="font-bold text-xl text-gray-800">Employee Assets</h3>
+              <h3 class="font-bold text-xl text-gray-800">Ticket Management</h3>
             </div>
-            <p class="text-gray-600 mb-4">View assets allocated to employees</p>
-            <div class="mt-4">
-              <button class="inline-flex items-center justify-center px-4 py-2 border border-transparent font-medium rounded-lg text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors duration-200 text-sm">
-                View
-              </button>
+            
+            <div class="grid grid-cols-3 gap-4 mb-6">
+              <div class="bg-blue-100 text-blue-800 p-4 rounded-lg shadow-sm">
+                <div class="text-2xl font-bold">{{ activeTickets }}</div>
+                <div>Active Tickets</div>
+              </div>
+              <div class="bg-green-100 text-green-800 p-4 rounded-lg shadow-sm">
+                <div class="text-2xl font-bold">{{ closedTickets }}</div>
+                <div>Closed Tickets</div>
+              </div>
+              <div class="bg-amber-100 text-amber-800 p-4 rounded-lg shadow-sm">
+                <div class="text-2xl font-bold">{{ pendingTickets }}</div>
+                <div>Pending Tickets</div>
+              </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+              <table class="min-w-full table-auto border-collapse">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ticket ID</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <tr *ngFor="let t of ticketList" class="hover:bg-gray-50 transition">
+                    <td class="px-6 py-4 text-sm font-medium text-gray-900">#{{ t.id }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">{{ t.employee }}</td>
+                    <td class="px-6 py-4">
+                      <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                        [ngClass]="{
+                          'bg-blue-100 text-blue-800': t.status === 'Open',
+                          'bg-amber-100 text-amber-800': t.status === 'Pending',
+                          'bg-green-100 text-green-800': t.status === 'Resolved',
+                          'bg-red-100 text-red-800': t.status === 'Closed'
+                        }">
+                        {{ t.status }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-600">{{ t.issue }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">
+                      <button (click)="openTicketAction(t)" class="text-indigo-600 hover:text-indigo-800">Take Action</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
-        </div>
+        </section>
 
-        <!-- Asset Reports Tile -->
-        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition duration-300 hover:shadow-md">
-          <div class="h-2 bg-green-600"></div>
+        <!-- Activity Logs -->
+        <section *ngIf="activeSection === 'logs'" class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+          <div class="h-2 bg-indigo-600"></div>
           <div class="p-6">
-            <div class="flex items-center space-x-3 mb-4">
-              <div class="bg-green-100 p-2 rounded-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <div class="flex items-center space-x-3 mb-6">
+              <div class="bg-indigo-100 p-2 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
               </div>
-              <h3 class="font-bold text-xl text-gray-800">Asset Reports</h3>
+              <h3 class="font-bold text-xl text-gray-800">Activity Logs</h3>
             </div>
-            <p class="text-gray-600 mb-4">Generate asset management reports</p>
-            <div class="mt-4">
-              <button class="inline-flex items-center justify-center px-4 py-2 border border-transparent font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200 text-sm">
-                Generate
-              </button>
+            
+            <div class="space-y-6">
+              <div *ngFor="let dateGroup of groupedActivityLogs" class="border rounded-lg overflow-hidden">
+                <div class="bg-gray-100 px-4 py-2 font-semibold text-gray-700">
+                  {{ dateGroup.date | date:'fullDate' }}
+                </div>
+                <div class="divide-y divide-gray-100">
+                  <div *ngFor="let userGroup of dateGroup.userActivities" class="p-4">
+                    <div class="flex items-center mb-2">
+                      <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-semibold mr-2">
+                        {{ userGroup.userInitials }}
+                      </div>
+                      <div>
+                        <div class="font-medium">{{ userGroup.userName }}</div>
+                        <div class="text-xs text-gray-500">{{ userGroup.device }} • {{ userGroup.issueType }}</div>
+                      </div>
+                    </div>
+                    <div class="ml-10 space-y-2">
+                      <div *ngFor="let log of userGroup.activities" class="text-sm p-2 bg-gray-50 rounded">
+                        <span class="font-medium text-gray-500">{{ log.timestamp | date:'shortTime' }}</span> - {{ log.message }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- Template for Assets Table -->
+<ng-template #assetsTable>
+  <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition duration-300 hover:shadow-md">
+    <div class="h-2 bg-indigo-600"></div>
+    <div class="p-6">
+      <div class="flex items-center space-x-3 mb-6">
+        <div class="bg-indigo-100 p-2 rounded-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <h3 class="font-bold text-xl text-gray-800">All Assets</h3>
+      </div>
+
+      <!-- Filters -->
+      <div class="mb-6 grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+          <input type="text" [value]="searchTerm" (input)="onSearchChange($event)" placeholder="Search assets..." 
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <select [value]="statusFilter" (change)="onStatusFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option *ngFor="let status of statusOptions" [value]="status">{{ status === '' ? 'All Status' : status }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+          <select [value]="typeFilter" (change)="onTypeFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option *ngFor="let type of typeOptions" [value]="type">{{ type === '' ? 'All Types' : type }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+          <select [value]="brandFilter" (change)="onBrandFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option *ngFor="let brand of brandOptions" [value]="brand">{{ brand === '' ? 'All Brands' : brand }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+          <select [value]="vendorFilter" (change)="onVendorFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option *ngFor="let vendor of vendorOptions" [value]="vendor">{{ vendor === '' ? 'All Vendors' : vendor }}</option>
+          </select>
         </div>
       </div>
 
-      <!-- Assets Table Section -->
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition duration-300 hover:shadow-md mb-6">
-        <div class="h-2 bg-indigo-600"></div>
-        <div class="p-6">
-          <div class="flex items-center space-x-3 mb-6">
-            <div class="bg-indigo-100 p-2 rounded-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h3 class="font-bold text-xl text-gray-800">All Assets</h3>
-          </div>
+      <!-- Table -->
+      <div class="overflow-x-auto">
+        <table class="min-w-full table-auto border-collapse">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">S/No.</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Brand/Model</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Allocated To</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact Person</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Warranty Valid Till</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            <tr *ngFor="let asset of filteredAssets" class="hover:bg-gray-50 transition">
+              <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ asset.assetId }}</td>
+              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.name }}</td>
+              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.type }}</td>
+              <td class="px-6 py-4 text-sm text-gray-600">
+                <div>{{ asset.brand }}</div>
+                <div class="text-xs text-gray-500">{{ asset.model }}</div>
+              </td>
+              <td class="px-6 py-4">
+                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                  [ngClass]="{
+                    'bg-green-100 text-green-800': asset.status === 'Available',
+                    'bg-blue-100 text-blue-800': asset.status === 'Allocated',
+                    'bg-amber-100 text-amber-800': asset.status === 'Maintenance',
+                    'bg-red-100 text-red-800': asset.status === 'Retired'
+                  }">
+                  {{ asset.status }}
+                </span>
+              </td>
+              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.allocatedTo || '—' }}</td>
+              <td class="px-6 py-4 text-sm text-gray-600">
+                <div class="font-medium">{{ asset.vendor }}</div>
+                <div class="text-xs text-gray-500">{{ asset.vendorEmail }}</div>
+              </td>
+              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.vendorContact }}</td>
+              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.warrantyExpiry | date }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</ng-template>
 
-          <!-- Filters -->
-          <div class="mb-6 grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
-              <input type="text" [value]="searchTerm" (input)="onSearchChange($event)" placeholder="Search assets..." 
-                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select [value]="statusFilter" (change)="onStatusFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option *ngFor="let status of statusOptions" [value]="status">
-                  {{ status === '' ? 'All Status' : status }}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
-              <select [value]="typeFilter" (change)="onTypeFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option *ngFor="let type of typeOptions" [value]="type">
-                  {{ type === '' ? 'All Types' : type }}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Brand</label>
-              <select [value]="brandFilter" (change)="onBrandFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option *ngFor="let brand of brandOptions" [value]="brand">
-                  {{ brand === '' ? 'All Brands' : brand }}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
-              <select [value]="vendorFilter" (change)="onVendorFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option *ngFor="let vendor of vendorOptions" [value]="vendor">
-                  {{ vendor === '' ? 'All Vendors' : vendor }}
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Table Section -->
-          <div class="overflow-x-auto">
-            <table class="min-w-full table-auto border-collapse">
-              <thead class="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">S/No.</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand/Model</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Allocated To</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Person</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Warranty Valid Till</th>
-                  <!-- <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th> -->
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                <tr *ngFor="let asset of filteredAssets" class="hover:bg-gray-50 transition duration-150">
-                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ asset.assetId }}</td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ asset.name }}</td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ asset.type }}</td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    <div>{{ asset.brand }}</div>
-                    <div class="text-xs text-gray-500">{{ asset.model }}</div>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                      [ngClass]="{
-                        'bg-green-100 text-green-800': asset.status === 'Available',
-                        'bg-blue-100 text-blue-800': asset.status === 'Allocated',
-                        'bg-amber-100 text-amber-800': asset.status === 'Maintenance',
-                        'bg-red-100 text-red-800': asset.status === 'Retired'
-                      }">
-                      {{ asset.status }}
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {{ asset.allocatedTo || '—' }}
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    <div class="font-medium">{{ asset.vendor }}</div>
-                    <div class="text-xs text-gray-500">{{ asset.vendorEmail }}</div>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {{ asset.vendorContact }}
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {{ asset.warrantyExpiry | date }}
-                  </td>
-                  <!-- <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <button
-                      (click)="updateAssetStatus(asset.id, 'Allocated')"
-                      class="inline-flex items-center justify-center px-3 py-1.5 border border-transparent font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200 text-xs">
-                      Allocate
-                    </button>
-                    <button
-                      (click)="updateAssetStatus(asset.id, 'Maintenance')"
-                      class="inline-flex items-center justify-center px-3 py-1.5 border border-transparent font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors duration-200 text-xs">
-                      Maintenance
-                    </button>
-                  </td> -->
-                </tr>
-              </tbody>
-            </table>
-          </div>
+<!-- Add Vendor Modal -->
+<div *ngIf="showVendorModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+    <div class="flex justify-between items-center p-4 border-b">
+      <h3 class="text-lg font-semibold">Add New Vendor</h3>
+      <button (click)="closeAddVendorModal()" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="p-4">
+      <form [formGroup]="vendorForm" (ngSubmit)="onVendorSubmit()">
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Vendor Name</label>
+          <input type="text" formControlName="name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
         </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+          <input type="text" formControlName="contact" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <input type="email" formControlName="email" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+          <input type="tel" formControlName="phone" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div class="flex justify-end space-x-2 mt-6">
+          <button type="button" (click)="closeAddVendorModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Add Vendor</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Ticket Action Modal -->
+<div *ngIf="selectedTicket" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+    <div class="flex justify-between items-center p-4 border-b">
+      <h3 class="text-lg font-semibold">Ticket Action - #{{selectedTicket.id}}</h3>
+      <button (click)="selectedTicket = null" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="p-4">
+      <div class="mb-4">
+        <p class="font-medium">Employee: {{selectedTicket.employee}}</p>
+        <p class="text-sm text-gray-600 mt-1">Issue: {{selectedTicket.issue}}</p>
+      </div>
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+        <select [(ngModel)]="selectedTicket.status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <option value="Open">Open</option>
+          <option value="Pending">Pending</option>
+          <option value="Resolved">Resolved</option>
+          <option value="Closed">Closed</option>
+        </select>
+      </div>
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Response</label>
+        <textarea rows="4" [(ngModel)]="ticketResponse" placeholder="Type your response or action here..." class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+      </div>
+      <div class="flex justify-end space-x-2 mt-6">
+        <button (click)="selectedTicket = null" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
+        <button (click)="submitTicketAction()" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Submit</button>
       </div>
     </div>
   </div>

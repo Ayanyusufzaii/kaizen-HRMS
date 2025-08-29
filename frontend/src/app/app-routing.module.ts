@@ -27,7 +27,7 @@ import { RejectedLeavesComponent } from './component/hr/rejected-leaves/rejected
 import { CurrentProfileComponent } from './component/hr/current-profile/current-profile.component';
 import { ViewCredComponent } from './component/hr/view-cred/view-cred.component';
 import { HrProfileComponent } from './component/hr/hr-profile/hr-profile.component';
-import { AssetManagementHrComponent } from './component/hr/asset-management-hr/asset-management-hr.component';
+import { AssetManagementComponent } from './component/hr/asset-management-hr/asset-management-hr.component';
 
 // Admin Components
 import { AdminDashboardComponent } from './component/admin-dashboard/admin-dashboard.component';
@@ -65,7 +65,7 @@ const routes: Routes = [
 { path: 'current-profile/:email', component: CurrentProfileComponent, canActivate: [AuthGuard, RoleGuard] },
 { path: 'view-cred', component: ViewCredComponent, canActivate: [AuthGuard, RoleGuard] },
 { path: 'hr-profile', component: HrProfileComponent, canActivate: [AuthGuard, RoleGuard] },
-{ path: 'asset-management-hr', component: AssetManagementHrComponent, canActivate: [AuthGuard, RoleGuard]},
+{ path: 'asset-management-hr', component: AssetManagementComponent, canActivate: [AuthGuard, RoleGuard]},
 
   // Admin routes
   { path: 'admin-dashboard', component: AdminDashboardComponent, canActivate: [AuthGuard] },
