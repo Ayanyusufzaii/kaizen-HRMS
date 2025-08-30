@@ -1,12 +1,18 @@
 import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 
+interface Evidence {
+  type: 'image' | 'video';
+  url: string;
+}
+
 interface ActivityLog {
   timestamp: Date;
   message: string;
   user: string;
   device: string;
   issueType: string;
+  addedBy: 'HR' | 'Employee';
 }
 
 interface UserActivity {
@@ -45,22 +51,95 @@ export class AssetManagementComponent implements OnInit {
   closedTickets = 45;
   pendingTickets = 8;
   ticketList = [
-    { id: '1001', employee: 'Raj Sharma', status: 'Open', issue: 'Laptop not turning on' },
-    { id: '1002', employee: 'Priya Patel', status: 'Pending', issue: 'Monitor flickering' },
-    { id: '1003', employee: 'Amit Kumar', status: 'Open', issue: 'Keyboard not working' },
-    { id: '1004', employee: 'Sneha Desai', status: 'Resolved', issue: 'Software installation' }
+    { 
+      id: '1001', 
+      employee: 'Raj Sharma', 
+      status: 'Open', 
+      issue: 'Laptop not turning on',
+      evidence: [
+        { type: 'image', url: 'https://example.com/image1.jpg' },
+        { type: 'video', url: 'https://example.com/video1.mp4' }
+      ] as Evidence[]
+    },
+    { 
+      id: '1002', 
+      employee: 'Priya Patel', 
+      status: 'Pending', 
+      issue: 'Monitor flickering',
+      evidence: [
+        { type: 'image', url: 'https://example.com/image2.jpg' }
+      ] as Evidence[]
+    },
+    { 
+      id: '1003', 
+      employee: 'Amit Kumar', 
+      status: 'Open', 
+      issue: 'Keyboard not working',
+      evidence: [] as Evidence[]
+    },
+    { 
+      id: '1004', 
+      employee: 'Sneha Desai', 
+      status: 'Closed', 
+      issue: 'Software installation',
+      evidence: [] as Evidence[]
+    }
   ];
   selectedTicket: any = null;
   ticketResponse = '';
+  informationRequest = '';
+  selectedEvidence: Evidence | null = null;
   
   // Activity Logs
   activityLogs: ActivityLog[] = [
-    { timestamp: new Date('2023-10-30T09:15:00'), message: 'Device allocated to Raj Sharma', user: 'Raj Sharma', device: 'MacBook Pro', issueType: 'Hardware Issue' },
-    { timestamp: new Date('2023-10-30T10:30:00'), message: 'Issue reported: Laptop not turning on', user: 'Raj Sharma', device: 'MacBook Pro', issueType: 'Hardware Issue' },
-    { timestamp: new Date('2023-10-30T11:45:00'), message: 'Technician assigned to ticket', user: 'Raj Sharma', device: 'MacBook Pro', issueType: 'Hardware Issue' },
-    { timestamp: new Date('2023-10-30T14:20:00'), message: 'Device repaired and returned', user: 'Raj Sharma', device: 'MacBook Pro', issueType: 'Hardware Issue' },
-    { timestamp: new Date('2023-10-29T08:30:00'), message: 'New monitor requested', user: 'Priya Patel', device: 'Dell Monitor', issueType: 'Display Issue' },
-    { timestamp: new Date('2023-10-29T09:45:00'), message: 'Monitor replacement approved', user: 'Priya Patel', device: 'Dell Monitor', issueType: 'Display Issue' }
+    { 
+      timestamp: new Date('2023-10-30T09:15:00'), 
+      message: 'Device allocated to Raj Sharma', 
+      user: 'Raj Sharma', 
+      device: 'MacBook Pro', 
+      issueType: 'Hardware Issue',
+      addedBy: 'HR'
+    },
+    { 
+      timestamp: new Date('2023-10-30T10:30:00'), 
+      message: 'Issue reported: Laptop not turning on', 
+      user: 'Raj Sharma', 
+      device: 'MacBook Pro', 
+      issueType: 'Hardware Issue',
+      addedBy: 'Employee'
+    },
+    { 
+      timestamp: new Date('2023-10-30T11:45:00'), 
+      message: 'Technician assigned to ticket', 
+      user: 'Raj Sharma', 
+      device: 'MacBook Pro', 
+      issueType: 'Hardware Issue',
+      addedBy: 'HR'
+    },
+    { 
+      timestamp: new Date('2023-10-30T14:20:00'), 
+      message: 'Device repaired and returned', 
+      user: 'Raj Sharma', 
+      device: 'MacBook Pro', 
+      issueType: 'Hardware Issue',
+      addedBy: 'HR'
+    },
+    { 
+      timestamp: new Date('2023-10-29T08:30:00'), 
+      message: 'New monitor requested', 
+      user: 'Priya Patel', 
+      device: 'Dell Monitor', 
+      issueType: 'Display Issue',
+      addedBy: 'Employee'
+    },
+    { 
+      timestamp: new Date('2023-10-29T09:45:00'), 
+      message: 'Monitor replacement approved', 
+      user: 'Priya Patel', 
+      device: 'Dell Monitor', 
+      issueType: 'Display Issue',
+      addedBy: 'HR'
+    }
   ];
   
   // Assets
@@ -112,27 +191,47 @@ export class AssetManagementComponent implements OnInit {
   openTicketAction(ticket: any): void {
     this.selectedTicket = {...ticket};
     this.ticketResponse = '';
+    this.informationRequest = '';
   }
 
   submitTicketAction(): void {
-    if (this.selectedTicket && this.ticketResponse) {
-      // Update ticket status and add to activity logs
+    if (this.selectedTicket) {
+      // Update ticket status
       const index = this.ticketList.findIndex(t => t.id === this.selectedTicket.id);
       if (index !== -1) {
         this.ticketList[index].status = this.selectedTicket.status;
       }
       
-      // Add to activity logs
-      this.activityLogs.unshift({
-        timestamp: new Date(),
-        message: `Ticket #${this.selectedTicket.id} updated: ${this.ticketResponse}`,
-        user: this.selectedTicket.employee,
-        device: 'N/A',
-        issueType: 'Ticket Update'
-      });
+      // Add to activity logs for HR response
+      if (this.ticketResponse) {
+        this.activityLogs.unshift({
+          timestamp: new Date(),
+          message: `HR Response: ${this.ticketResponse}`,
+          user: this.selectedTicket.employee,
+          device: 'N/A',
+          issueType: 'Ticket Update',
+          addedBy: 'HR'
+        });
+      }
+      
+      // Add to activity logs for information request
+      if (this.informationRequest) {
+        this.activityLogs.unshift({
+          timestamp: new Date(),
+          message: `Information Request: ${this.informationRequest}`,
+          user: this.selectedTicket.employee,
+          device: 'N/A',
+          issueType: 'Information Request',
+          addedBy: 'HR'
+        });
+      }
       
       this.selectedTicket = null;
     }
+  }
+
+  openEvidenceModal(evidence: Evidence): void {
+    this.selectedEvidence = evidence;
   }
 
   // Activity Logs Grouping
