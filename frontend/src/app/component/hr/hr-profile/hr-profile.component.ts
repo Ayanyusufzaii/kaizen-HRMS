@@ -12,6 +12,7 @@ import { of } from 'rxjs';
 })
 
 export class HrProfileComponent implements OnInit {
+  
   // Profile Fields
   employeeId = '';
   name = '';
@@ -63,6 +64,8 @@ export class HrProfileComponent implements OnInit {
       this.router.navigate(['/login']);
       return;
     }
+    
+    
 
     const email = loggedUser.email;
 
@@ -92,6 +95,10 @@ export class HrProfileComponent implements OnInit {
         alert('Error fetching user details. Please try again.');
       }
     );
+  }
+
+    onSidebarToggle(isMinimized: boolean) {
+    this.isSidebarMinimized = isMinimized;
   }
 
   toggleSidebar(): void {

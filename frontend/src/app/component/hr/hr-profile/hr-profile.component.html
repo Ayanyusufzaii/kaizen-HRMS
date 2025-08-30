@@ -1,6 +1,9 @@
 <div class="flex h-screen bg-white-100">
   <!-- Sidebar -->
- <app-hr-side-navbar class="w-64"></app-hr-side-navbar> 
+ <app-hr-side-navbar 
+    [isMinimized]="isSidebarMinimized" 
+    (toggleMinimized)="onSidebarToggle($event)">
+  </app-hr-side-navbar>
 
   <!-- Main Content -->
   <div class="flex-1 p-6">

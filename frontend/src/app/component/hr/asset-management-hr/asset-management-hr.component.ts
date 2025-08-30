@@ -34,6 +34,7 @@ interface DateGroup {
   styleUrls: ['./asset-management-hr.component.css']
 })
 export class AssetManagementComponent implements OnInit {
+   isSidebarMinimized = false;
   currentDate = new Date();
   activeSection = 'assets';
   
@@ -170,6 +171,11 @@ export class AssetManagementComponent implements OnInit {
 
   ngOnInit(): void {}
 
+
+    onSidebarToggle(isMinimized: boolean) {
+    this.isSidebarMinimized = isMinimized;
+  }
+  
   // Vendor Modal Functions
   openAddVendorModal(): void {
     this.showVendorModal = true;

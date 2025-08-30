@@ -8,6 +8,7 @@ import { AuthService } from '../../services/auth.service';
   styleUrls: ['./employee-details.component.css']
 })
 export class EmployeeDetailsComponent implements OnInit {
+  
   isSidebarMinimized = false;
   isDropdownOpen = false;
   isCollapsed = false;
@@ -28,6 +29,9 @@ export class EmployeeDetailsComponent implements OnInit {
 
   ngOnInit(): void {
     this.fetchProfiles();
+  }
+    onSidebarToggle(isMinimized: boolean) {
+    this.isSidebarMinimized = isMinimized;
   }
 
   toggleSidebar() {

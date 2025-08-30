@@ -24,6 +24,7 @@ interface LeaveStatusResponse {
   styleUrls: ['./leave-attendance.component.css']
 })
 export class LeaveAttendanceComponent implements OnInit {
+  isSidebarMinimized = false;
   leaveRequests: LeaveRequest[] = [];
 
 
@@ -39,7 +40,11 @@ export class LeaveAttendanceComponent implements OnInit {
   }
 
   ngOnInit() {
+    
     this.loadLeaveRequests();
+  }
+    onSidebarToggle(isMinimized: boolean) {
+    this.isSidebarMinimized = isMinimized;
   }
 
   loadLeaveRequests(): void {
