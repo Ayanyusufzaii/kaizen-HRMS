@@ -783,6 +783,534 @@ router.post('/update-leave-balance', (req, res) => {
 
 
 
+
+// ==================== ASSET MANAGEMENT APIs ====================
+
+// Get all assets with filtering
+router.get('/assets', (req, res) => {
+  const { search, status, type, brand, vendor, page = 1, limit = 10 } = req.query;
+  
+  let sql = `
+    SELECT a.*, 
+           v.name as vendor_name, 
+           v.contact_person as vendor_contact_person,
+           v.email as vendor_email,
+           v.phone as vendor_phone
+    FROM assets a
+    LEFT JOIN vendors v ON a.vendor = v.name
+    WHERE 1=1
+  `;
+  let params = [];
+
+  if (search) {
+    sql += ` AND (a.asset_id LIKE ? OR a.name LIKE ? OR a.model LIKE ? OR a.allocated_to LIKE ?)`;
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  }
+
+  if (status && status !== '') {
+    sql += ` AND a.status = ?`;
+    params.push(status);
+  }
+
+  if (type && type !== '') {
+    sql += ` AND a.type = ?`;
+    params.push(type);
+  }
+
+  if (brand && brand !== '') {
+    sql += ` AND a.brand = ?`;
+    params.push(brand);
+  }
+
+  if (vendor && vendor !== '') {
+    sql += ` AND a.vendor = ?`;
+    params.push(vendor);
+  }
+
+  // Add pagination
+  const offset = (page - 1) * limit;
+  sql += ` ORDER BY a.created_at DESC LIMIT ? OFFSET ?`;
+  params.push(parseInt(limit), offset);
+
+  // Count query for pagination
+  let countSql = `SELECT COUNT(*) as total FROM assets a WHERE 1=1`;
+  let countParams = [];
+
+  if (search) {
+    countSql += ` AND (a.asset_id LIKE ? OR a.name LIKE ? OR a.model LIKE ? OR a.allocated_to LIKE ?)`;
+    countParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  }
+
+  if (status && status !== '') {
+    countSql += ` AND a.status = ?`;
+    countParams.push(status);
+  }
+
+  if (type && type !== '') {
+    countSql += ` AND a.type = ?`;
+    countParams.push(type);
+  }
+
+  if (brand && brand !== '') {
+    countSql += ` AND a.brand = ?`;
+    countParams.push(brand);
+  }
+
+  if (vendor && vendor !== '') {
+    countSql += ` AND a.vendor = ?`;
+    countParams.push(vendor);
+  }
+
+  db.query(countSql, countParams, (err, countResult) => {
+    if (err) {
+      console.error('Error counting assets:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    const total = countResult[0].total;
+
+    db.query(sql, params, (err, results) => {
+      if (err) {
+        console.error('Error fetching assets:', err);
+        return res.status(500).json({ success: false, message: 'Server error' });
+      }
+
+      res.json({
+        success: true,
+        data: results,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      });
+    });
+  });
+});
+
+// Get asset by ID
+router.get('/assets/:id', (req, res) => {
+  const { id } = req.params;
+  
+  const sql = `
+    SELECT a.*, 
+           v.name as vendor_name, 
+           v.contact_person as vendor_contact_person,
+           v.email as vendor_email,
+           v.phone as vendor_phone
+    FROM assets a
+    LEFT JOIN vendors v ON a.vendor = v.name
+    WHERE a.asset_id = ? OR a.id = ?
+  `;
+
+  db.query(sql, [id, id], (err, results) => {
+    if (err) {
+      console.error('Error fetching asset:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ success: false, message: 'Asset not found' });
+    }
+
+    res.json({ success: true, data: results[0] });
+  });
+});
+
+// Create new asset
+router.post('/assets', (req, res) => {
+  const {
+    asset_id,
+    name,
+    type,
+    brand,
+    model,
+    status,
+    allocated_to,
+    vendor,
+    vendor_email,
+    vendor_contact,
+    warranty_expiry,
+    purchase_date,
+    purchase_cost
+  } = req.body;
+
+  const sql = `
+    INSERT INTO assets (
+      asset_id, name, type, brand, model, status, allocated_to, 
+      vendor, vendor_email, vendor_contact, warranty_expiry, 
+      purchase_date, purchase_cost
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  const values = [
+    asset_id, name, type, brand, model, status || 'Available', allocated_to,
+    vendor, vendor_email, vendor_contact, warranty_expiry,
+    purchase_date, purchase_cost
+  ];
+
+  db.query(sql, values, (err, results) => {
+    if (err) {
+      console.error('Error creating asset:', err);
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ success: false, message: 'Asset ID already exists' });
+      }
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Asset created successfully',
+      data: { id: results.insertId, asset_id }
+    });
+  });
+});
+
+// Update asset
+router.put('/assets/:id', (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    type,
+    brand,
+    model,
+    status,
+    allocated_to,
+    vendor,
+    vendor_email,
+    vendor_contact,
+    warranty_expiry,
+    purchase_date,
+    purchase_cost
+  } = req.body;
+
+  const sql = `
+    UPDATE assets SET 
+      name = ?, type = ?, brand = ?, model = ?, status = ?, 
+      allocated_to = ?, vendor = ?, vendor_email = ?, vendor_contact = ?, 
+      warranty_expiry = ?, purchase_date = ?, purchase_cost = ?
+    WHERE asset_id = ?
+  `;
+
+  const values = [
+    name, type, brand, model, status, allocated_to, vendor, 
+    vendor_email, vendor_contact, warranty_expiry, purchase_date, 
+    purchase_cost, id, id
+  ];
+
+  db.query(sql, values, (err, results) => {
+    if (err) {
+      console.error('Error updating asset:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Asset not found' });
+    }
+
+    res.json({ success: true, message: 'Asset updated successfully' });
+  });
+});
+
+// Delete asset
+router.delete('/assets/:id', (req, res) => {
+  const { id } = req.params;
+
+  const sql = 'DELETE FROM assets WHERE asset_id = ? OR id = ?';
+
+  db.query(sql, [id, id], (err, results) => {
+    if (err) {
+      console.error('Error deleting asset:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Asset not found' });
+    }
+
+    res.json({ success: true, message: 'Asset deleted successfully' });
+  });
+});
+
+// Get filter options
+router.get('/assets/filters/options', (req, res) => {
+  const queries = [
+    'SELECT DISTINCT status as value FROM assets WHERE status IS NOT NULL',
+    'SELECT DISTINCT type as value FROM assets WHERE type IS NOT NULL',
+    'SELECT DISTINCT brand as value FROM assets WHERE brand IS NOT NULL',
+    'SELECT DISTINCT name as value FROM vendors WHERE name IS NOT NULL'
+  ];
+
+  Promise.all(queries.map(query => 
+    new Promise((resolve, reject) => {
+      db.query(query, (err, results) => {
+        if (err) reject(err);
+        else resolve(results.map(item => item.value));
+      });
+    })
+  ))
+  .then(([statusOptions, typeOptions, brandOptions, vendorOptions]) => {
+    res.json({
+      success: true,
+      data: {
+        status: statusOptions,
+        type: typeOptions,
+        brand: brandOptions,
+        vendor: vendorOptions
+      }
+    });
+  })
+  .catch(err => {
+    console.error('Error fetching filter options:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  });
+});
+
+// ==================== VENDOR MANAGEMENT APIs ====================
+
+// Get all vendors
+router.get('/vendors', (req, res) => {
+  const sql = 'SELECT * FROM vendors ORDER BY name';
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching vendors:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    res.json({ success: true, data: results });
+  });
+});
+
+// Create new vendor
+router.post('/vendors', (req, res) => {
+  const { name, contact_person, email, phone, address } = req.body;
+
+  const sql = `
+    INSERT INTO vendors (name, contact_person, email, phone, address)
+    VALUES (?, ?, ?, ?, ?)
+  `;
+
+  db.query(sql, [name, contact_person, email, phone, address], (err, results) => {
+    if (err) {
+      console.error('Error creating vendor:', err);
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ success: false, message: 'Vendor already exists' });
+      }
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Vendor created successfully',
+      data: { id: results.insertId, name }
+    });
+  });
+});
+
+// Update vendor
+router.put('/vendors/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, contact_person, email, phone, address } = req.body;
+
+  const sql = `
+    UPDATE vendors SET 
+      name = ?, contact_person = ?, email = ?, phone = ?, address = ?
+    WHERE id = ?
+  `;
+
+  db.query(sql, [name, contact_person, email, phone, address, id], (err, results) => {
+    if (err) {
+      console.error('Error updating vendor:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (results.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Vendor not found' });
+    }
+
+    res.json({ success: true, message: 'Vendor updated successfully' });
+  });
+});
+
+// Delete vendor
+router.delete('/vendors/:id', (req, res) => {
+  const { id } = req.params;
+
+  // Check if vendor is used in assets
+  const checkSql = 'SELECT COUNT(*) as count FROM assets WHERE vendor IN (SELECT name FROM vendors WHERE id = ?)';
+  
+  db.query(checkSql, [id], (err, results) => {
+    if (err) {
+      console.error('Error checking vendor usage:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (results[0].count > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cannot delete vendor. It is being used by one or more assets.' 
+      });
+    }
+
+    const deleteSql = 'DELETE FROM vendors WHERE id = ?';
+    
+    db.query(deleteSql, [id], (err, results) => {
+      if (err) {
+        console.error('Error deleting vendor:', err);
+        return res.status(500).json({ success: false, message: 'Server error' });
+      }
+
+      if (results.affectedRows === 0) {
+        return res.status(404).json({ success: false, message: 'Vendor not found' });
+      }
+
+      res.json({ success: true, message: 'Vendor deleted successfully' });
+    });
+  });
+});
+
+// ==================== ASSET ALLOCATION APIs ====================
+
+// Allocate asset to employee
+router.post('/assets/:id/allocate', (req, res) => {
+  const { id } = req.params;
+  const { allocated_to, notes } = req.body;
+
+  // Start transaction
+  db.beginTransaction(err => {
+    if (err) {
+      console.error('Error starting transaction:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    // Update asset status
+    const updateAssetSql = 'UPDATE assets SET status = "Allocated", allocated_to = ? WHERE asset_id = ? OR id = ?';
+    
+    db.query(updateAssetSql, [allocated_to, id, id], (err, results) => {
+      if (err) {
+        return db.rollback(() => {
+          console.error('Error updating asset:', err);
+          res.status(500).json({ success: false, message: 'Server error' });
+        });
+      }
+
+      if (results.affectedRows === 0) {
+        return db.rollback(() => {
+          res.status(404).json({ success: false, message: 'Asset not found' });
+        });
+      }
+
+      // Add to allocation history
+      const historySql = `
+        INSERT INTO asset_allocation_history (asset_id, allocated_to, allocated_date, notes)
+        VALUES (?, ?, CURDATE(), ?)
+      `;
+
+      db.query(historySql, [id, allocated_to, notes], (err, results) => {
+        if (err) {
+          return db.rollback(() => {
+            console.error('Error adding to allocation history:', err);
+            res.status(500).json({ success: false, message: 'Server error' });
+          });
+        }
+
+        db.commit(err => {
+          if (err) {
+            return db.rollback(() => {
+              console.error('Error committing transaction:', err);
+              res.status(500).json({ success: false, message: 'Server error' });
+            });
+          }
+
+          res.json({ success: true, message: 'Asset allocated successfully' });
+        });
+      });
+    });
+  });
+});
+
+// Return asset
+router.post('/assets/:id/return', (req, res) => {
+  const { id } = req.params;
+  const { notes } = req.body;
+
+  // Start transaction
+  db.beginTransaction(err => {
+    if (err) {
+      console.error('Error starting transaction:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    // Update asset status
+    const updateAssetSql = 'UPDATE assets SET status = "Available", allocated_to = NULL WHERE asset_id = ? OR id = ?';
+    
+    db.query(updateAssetSql, [id, id], (err, results) => {
+      if (err) {
+        return db.rollback(() => {
+          console.error('Error updating asset:', err);
+          res.status(500).json({ success: false, message: 'Server error' });
+        });
+      }
+
+      if (results.affectedRows === 0) {
+        return db.rollback(() => {
+          res.status(404).json({ success: false, message: 'Asset not found' });
+        });
+      }
+
+      // Update allocation history
+      const historySql = `
+        UPDATE asset_allocation_history 
+        SET returned_date = CURDATE(), notes = CONCAT(IFNULL(notes, ''), ?)
+        WHERE asset_id = ? AND returned_date IS NULL
+      `;
+
+      db.query(historySql, [`\nReturned: ${notes}`, id], (err, results) => {
+        if (err) {
+          return db.rollback(() => {
+            console.error('Error updating allocation history:', err);
+            res.status(500).json({ success: false, message: 'Server error' });
+          });
+        }
+
+        db.commit(err => {
+          if (err) {
+            return db.rollback(() => {
+              console.error('Error committing transaction:', err);
+              res.status(500).json({ success: false, message: 'Server error' });
+            });
+          }
+
+          res.json({ success: true, message: 'Asset returned successfully' });
+        });
+      });
+    });
+  });
+});
+
+// Get allocation history for asset
+router.get('/assets/:id/history', (req, res) => {
+  const { id } = req.params;
+
+  const sql = `
+    SELECT * FROM asset_allocation_history 
+    WHERE asset_id = ? 
+    ORDER BY allocated_date DESC
+  `;
+
+  db.query(sql, [id], (err, results) => {
+    if (err) {
+      console.error('Error fetching allocation history:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    res.json({ success: true, data: results });
+  });
+});
+
+
   return router;
 };
 

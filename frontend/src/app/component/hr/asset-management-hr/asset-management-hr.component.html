@@ -63,36 +63,205 @@
               + Add Vendor
             </button>
             
-            <div class="overflow-x-auto">
-              <table class="min-w-full table-auto border-collapse">
-                <thead class="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vendor Name</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                  <tr *ngFor="let v of vendorList" class="hover:bg-gray-50 transition">
-                    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ v.name }}</td>
-                    <td class="px-6 py-4 text-sm text-gray-600">{{ v.contact }}</td>
-                    <td class="px-6 py-4 text-sm text-gray-600">{{ v.email }}</td>
-                    <td class="px-6 py-4 text-sm text-gray-600">
-                      <button class="text-indigo-600 hover:text-indigo-800 mr-3">Edit</button>
-                      <button class="text-red-600 hover:text-red-800">Delete</button>
-                    </td>
-                  </tr>
-                </tbody>
+            <!-- Material Table for Vendors -->
+            <div class="mat-elevation overflow-x-auto">
+              <table mat-table [dataSource]="vendorDataSource" class="w-full">
+                
+                <!-- Vendor Name Column -->
+                <ng-container matColumnDef="name">
+                  <th mat-header-cell *matHeaderCellDef> Vendor Name </th>
+                  <td mat-cell *matCellDef="let element"> {{element.name}} </td>
+                </ng-container>
+                
+                <!-- Contact Column -->
+                <ng-container matColumnDef="contact">
+                  <th mat-header-cell *matHeaderCellDef> Contact </th>
+                  <td mat-cell *matCellDef="let element"> {{element.contact}} </td>
+                </ng-container>
+                
+                <!-- Email Column -->
+                <ng-container matColumnDef="email">
+                  <th mat-header-cell *matHeaderCellDef> Email </th>
+                  <td mat-cell *matCellDef="let element"> {{element.email}} </td>
+                </ng-container>
+                
+                <!-- Actions Column -->
+                <ng-container matColumnDef="actions">
+                  <th mat-header-cell *matHeaderCellDef> Actions </th>
+                  <td mat-cell *matCellDef="let element">
+                    <button mat-icon-button color="primary" (click)="editVendor(element)">
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                    <button mat-icon-button color="warn" (click)="deleteVendor(element)">
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  </td>
+                </ng-container>
+                
+                <tr mat-header-row *matHeaderRowDef="vendorDisplayedColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: vendorDisplayedColumns;"></tr>
               </table>
+              
+              <mat-paginator [pageSizeOptions]="[5, 10, 20]" showFirstLastButtons></mat-paginator>
             </div>
           </div>
         </section>
 
         <!-- All Assets -->
         <section *ngIf="activeSection === 'assets'">
-          <h2 class="text-lg font-semibold mb-4">All Assets</h2>
-          <ng-container *ngTemplateOutlet="assetsTable"></ng-container>
+          <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition duration-300 hover:shadow-md">
+            <div class="h-2 bg-indigo-600"></div>
+            <div class="p-6">
+              <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center space-x-3">
+                  <div class="bg-indigo-100 p-2 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <h3 class="font-bold text-xl text-gray-800">All Assets</h3>
+                </div>
+                <button (click)="openAddAssetModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                  + Add Asset
+                </button>
+              </div>
+
+              <!-- Filters -->
+              <div class="mb-6 grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                  <input type="text" [formControl]="searchControl" placeholder="Search assets..." 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select [formControl]="statusControl" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option *ngFor="let status of statusOptions" [value]="status">{{ status === '' ? 'All Status' : status }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                  <select [formControl]="typeControl" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option *ngFor="let type of typeOptions" [value]="type">{{ type === '' ? 'All Types' : type }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                  <select [formControl]="brandControl" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option *ngFor="let brand of brandOptions" [value]="brand">{{ brand === '' ? 'All Brands' : brand }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+                  <select [formControl]="vendorControl" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option *ngFor="let vendor of vendorOptions" [value]="vendor">{{ vendor === '' ? 'All Vendors' : vendor }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Material Table for Assets -->
+              <div class="mat-elevation overflow-x-auto">
+                <table mat-table [dataSource]="assetDataSource" matSort class="w-full">
+                  
+                  <!-- S/No Column -->
+                  <ng-container matColumnDef="assetId">
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> S/No. </th>
+                    <td mat-cell *matCellDef="let element"> {{element.assetId}} </td>
+                  </ng-container>
+                  
+                  <!-- Name Column -->
+                  <ng-container matColumnDef="name">
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Name </th>
+                    <td mat-cell *matCellDef="let element"> {{element.name}} </td>
+                  </ng-container>
+                  
+                  <!-- Type Column -->
+                  <ng-container matColumnDef="type">
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Type </th>
+                    <td mat-cell *matCellDef="let element"> {{element.type}} </td>
+                  </ng-container>
+                  
+                  <!-- Brand/Model Column -->
+                  <ng-container matColumnDef="brandModel">
+                    <th mat-header-cell *matHeaderCellDef> Brand/Model </th>
+                    <td mat-cell *matCellDef="let element">
+                      <div>{{ element.brand }}</div>
+                      <div class="text-xs text-gray-500">{{ element.model }}</div>
+                    </td>
+                  </ng-container>
+                  
+                  <!-- Status Column -->
+                  <ng-container matColumnDef="status">
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Status </th>
+                    <td mat-cell *matCellDef="let element">
+                      <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                        [ngClass]="{
+                          'bg-green-100 text-green-800': element.status === 'Available',
+                          'bg-blue-100 text-blue-800': element.status === 'Allocated',
+                          'bg-amber-100 text-amber-800': element.status === 'Maintenance',
+                          'bg-red-100 text-red-800': element.status === 'Retired'
+                        }">
+                        {{ element.status }}
+                      </span>
+                    </td>
+                  </ng-container>
+                  
+                  <!-- Allocated To Column -->
+                  <ng-container matColumnDef="allocatedTo">
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Allocated To </th>
+                    <td mat-cell *matCellDef="let element"> {{element.allocatedTo || '—'}} </td>
+                  </ng-container>
+                  
+                  <!-- Vendor Column -->
+                  <ng-container matColumnDef="vendor">
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Vendor </th>
+                    <td mat-cell *matCellDef="let element">
+                      <div class="font-medium">{{ element.vendor }}</div>
+                      <div class="text-xs text-gray-500">{{ element.vendorEmail }}</div>
+                    </td>
+                  </ng-container>
+                  
+                  <!-- Contact Person Column -->
+                  <ng-container matColumnDef="vendorContact">
+                    <th mat-header-cell *matHeaderCellDef> Contact Person </th>
+                    <td mat-cell *matCellDef="let element"> {{element.vendorContact}} </td>
+                  </ng-container>
+                  
+                  <!-- Warranty Column -->
+                  <ng-container matColumnDef="warrantyExpiry">
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Warranty Valid Till </th>
+                    <td mat-cell *matCellDef="let element"> {{element.warrantyExpiry | date}} </td>
+                  </ng-container>
+                  
+                  <!-- Actions Column -->
+                  <ng-container matColumnDef="actions">
+                    <th mat-header-cell *matHeaderCellDef> Actions </th>
+                    <td mat-cell *matCellDef="let element">
+                      <button mat-icon-button color="primary" (click)="editAsset(element)">
+                        <mat-icon>edit</mat-icon>
+                      </button>
+                      <button mat-icon-button color="warn" (click)="deleteAsset(element)">
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    </td>
+                  </ng-container>
+                  
+                  <tr mat-header-row *matHeaderRowDef="assetDisplayedColumns"></tr>
+                  <tr mat-row *matRowDef="let row; columns: assetDisplayedColumns;"></tr>
+                  
+                  <!-- Row shown when there's no matching data -->
+                  <tr class="mat-row" *matNoDataRow>
+                    <td class="mat-cell py-4 text-center" [attr.colspan]="assetDisplayedColumns.length">
+                      No assets found matching your filters.
+                    </td>
+                  </tr>
+                </table>
+                
+                <!-- Paginator -->
+                <mat-paginator [pageSizeOptions]="[5, 10, 20]" showFirstLastButtons></mat-paginator>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- Ticket Management -->
@@ -123,50 +292,74 @@
               </div>
             </div>
             
-            <div class="overflow-x-auto">
-              <table class="min-w-full table-auto border-collapse">
-                <thead class="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ticket ID</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issue</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Evidence</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                  <tr *ngFor="let t of ticketList" class="hover:bg-gray-50 transition">
-                    <td class="px-6 py-4 text-sm font-medium text-gray-900">#{{ t.id }}</td>
-                    <td class="px-6 py-4 text-sm text-gray-600">{{ t.employee }}</td>
-                    <td class="px-6 py-4">
-                      <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                        [ngClass]="{
-                          'bg-blue-100 text-blue-800': t.status === 'Open',
-                          'bg-amber-100 text-amber-800': t.status === 'Pending',
-                          'bg-green-100 text-green-800': t.status === 'Closed'
-                        }">
-                        {{ t.status }}
-                      </span>
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-600">{{ t.issue }}</td>
-                    <td class="px-6 py-4 text-sm text-gray-600">
-                      <div *ngIf="t.evidence" class="flex space-x-2">
-                        <ng-container *ngFor="let evidence of t.evidence">
-                          <img *ngIf="evidence.type === 'image'" [src]="evidence.url" alt="Issue evidence" class="h-10 w-10 object-cover rounded cursor-pointer" (click)="openEvidenceModal(evidence)">
-                          <video *ngIf="evidence.type === 'video'" class="h-10 w-10 object-cover rounded cursor-pointer" (click)="openEvidenceModal(evidence)">
-                            <source [src]="evidence.url" type="video/mp4">
-                          </video>
-                        </ng-container>
-                      </div>
-                      <span *ngIf="!t.evidence || t.evidence.length === 0">—</span>
-                    </td>
-                    <td class="px-6 py-4 text-sm text-gray-600">
-                      <button (click)="openTicketAction(t)" class="text-indigo-600 hover:text-indigo-800">Take Action</button>
-                    </td>
-                  </tr>
-                </tbody>
+            <!-- Material Table for Tickets -->
+            <div class="mat-elevation overflow-x-auto">
+              <table mat-table [dataSource]="ticketDataSource" class="w-full">
+                
+                <!-- Ticket ID Column -->
+                <ng-container matColumnDef="id">
+                  <th mat-header-cell *matHeaderCellDef> Ticket ID </th>
+                  <td mat-cell *matCellDef="let element"> #{{element.id}} </td>
+                </ng-container>
+                
+                <!-- Employee Column -->
+                <ng-container matColumnDef="employee">
+                  <th mat-header-cell *matHeaderCellDef> Employee </th>
+                  <td mat-cell *matCellDef="let element"> {{element.employee}} </td>
+                </ng-container>
+                
+                <!-- Status Column -->
+                <ng-container matColumnDef="status">
+                  <th mat-header-cell *matHeaderCellDef> Status </th>
+                  <td mat-cell *matCellDef="let element">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                      [ngClass]="{
+                        'bg-blue-100 text-blue-800': element.status === 'Open',
+                        'bg-amber-100 text-amber-800': element.status === 'Pending',
+                        'bg-green-100 text-green-800': element.status === 'Closed'
+                      }">
+                      {{ element.status }}
+                    </span>
+                  </td>
+                </ng-container>
+                
+                <!-- Issue Column -->
+                <ng-container matColumnDef="issue">
+                  <th mat-header-cell *matHeaderCellDef> Issue </th>
+                  <td mat-cell *matCellDef="let element"> {{element.issue}} </td>
+                </ng-container>
+                
+                <!-- Evidence Column -->
+                <ng-container matColumnDef="evidence">
+                  <th mat-header-cell *matHeaderCellDef> Evidence </th>
+                  <td mat-cell *matCellDef="let element">
+                    <div *ngIf="element.evidence && element.evidence.length > 0" class="flex space-x-2">
+                      <ng-container *ngFor="let evidence of element.evidence">
+                        <img *ngIf="evidence.type === 'image'" [src]="evidence.url" alt="Issue evidence" class="h-10 w-10 object-cover rounded cursor-pointer" (click)="openEvidenceModal(evidence)">
+                        <video *ngIf="evidence.type === 'video'" class="h-10 w-10 object-cover rounded cursor-pointer" (click)="openEvidenceModal(evidence)">
+                          <source [src]="evidence.url" type="video/mp4">
+                        </video>
+                      </ng-container>
+                    </div>
+                    <span *ngIf="!element.evidence || element.evidence.length === 0">—</span>
+                  </td>
+                </ng-container>
+                
+                <!-- Actions Column -->
+                <ng-container matColumnDef="actions">
+                  <th mat-header-cell *matHeaderCellDef> Actions </th>
+                  <td mat-cell *matCellDef="let element">
+                    <button mat-raised-button color="primary" (click)="openTicketAction(element)">
+                      Take Action
+                    </button>
+                  </td>
+                </ng-container>
+                
+                <tr mat-header-row *matHeaderRowDef="ticketDisplayedColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: ticketDisplayedColumns;"></tr>
               </table>
+              
+              <mat-paginator [pageSizeOptions]="[5, 10, 20]" showFirstLastButtons></mat-paginator>
             </div>
           </div>
         </section>
@@ -221,109 +414,11 @@
   </div>
 </div>
 
-<!-- Template for Assets Table -->
-<ng-template #assetsTable>
-  <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 transition duration-300 hover:shadow-md">
-    <div class="h-2 bg-indigo-600"></div>
-    <div class="p-6">
-      <div class="flex items-center space-x-3 mb-6">
-        <div class="bg-indigo-100 p-2 rounded-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-        </div>
-        <h3 class="font-bold text-xl text-gray-800">All Assets</h3>
-      </div>
-
-      <!-- Filters -->
-      <div class="mb-6 grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
-          <input type="text" [value]="searchTerm" (input)="onSearchChange($event)" placeholder="Search assets..." 
-                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <select [value]="statusFilter" (change)="onStatusFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option *ngFor="let status of statusOptions" [value]="status">{{ status === '' ? 'All Status' : status }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
-          <select [value]="typeFilter" (change)="onTypeFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option *ngFor="let type of typeOptions" [value]="type">{{ type === '' ? 'All Types' : type }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Brand</label>
-          <select [value]="brandFilter" (change)="onBrandFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option *ngFor="let brand of brandOptions" [value]="brand">{{ brand === '' ? 'All Brands' : brand }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
-          <select [value]="vendorFilter" (change)="onVendorFilterChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option *ngFor="let vendor of vendorOptions" [value]="vendor">{{ vendor === '' ? 'All Vendors' : vendor }}</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Table -->
-      <div class="overflow-x-auto">
-        <table class="min-w-full table-auto border-collapse">
-          <thead class="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">S/No.</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Brand/Model</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Allocated To</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact Person</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Warranty Valid Till</th>
-            </tr>
-          </thead>
-          <tbody class="bg-white divide-y divide-gray-200">
-            <tr *ngFor="let asset of filteredAssets" class="hover:bg-gray-50 transition">
-              <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ asset.assetId }}</td>
-              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.name }}</td>
-              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.type }}</td>
-              <td class="px-6 py-4 text-sm text-gray-600">
-                <div>{{ asset.brand }}</div>
-                <div class="text-xs text-gray-500">{{ asset.model }}</div>
-              </td>
-              <td class="px-6 py-4">
-                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                  [ngClass]="{
-                    'bg-green-100 text-green-800': asset.status === 'Available',
-                    'bg-blue-100 text-blue-800': asset.status === 'Allocated',
-                    'bg-amber-100 text-amber-800': asset.status === 'Maintenance',
-                    'bg-red-100 text-red-800': asset.status === 'Retired'
-                  }">
-                  {{ asset.status }}
-                </span>
-              </td>
-              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.allocatedTo || '—' }}</td>
-              <td class="px-6 py-4 text-sm text-gray-600">
-                <div class="font-medium">{{ asset.vendor }}</div>
-                <div class="text-xs text-gray-500">{{ asset.vendorEmail }}</div>
-              </td>
-              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.vendorContact }}</td>
-              <td class="px-6 py-4 text-sm text-gray-600">{{ asset.warrantyExpiry | date }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</ng-template>
-
 <!-- Add Vendor Modal -->
 <div *ngIf="showVendorModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
     <div class="flex justify-between items-center p-4 border-b">
-      <h3 class="text-lg font-semibold">Add New Vendor</h3>
+      <h3 class="text-lg font-semibold">{{ editingVendor ? 'Edit Vendor' : 'Add New Vendor' }}</h3>
       <button (click)="closeAddVendorModal()" class="text-gray-400 hover:text-gray-600">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -350,7 +445,87 @@
         </div>
         <div class="flex justify-end space-x-2 mt-6">
           <button type="button" (click)="closeAddVendorModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Add Vendor</button>
+          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+            {{ editingVendor ? 'Update Vendor' : 'Add Vendor' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Asset Modal -->
+<div *ngIf="showAssetModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-screen overflow-auto">
+    <div class="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
+      <h3 class="text-lg font-semibold">{{ editingAsset ? 'Edit Asset' : 'Add New Asset' }}</h3>
+      <button (click)="closeAddAssetModal()" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="p-4">
+      <form [formGroup]="assetForm" (ngSubmit)="onAssetSubmit()">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Asset ID</label>
+            <input type="text" formControlName="assetId" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <input type="text" formControlName="name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+            <select formControlName="type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option *ngFor="let type of typeOptions.slice(1)" [value]="type">{{ type }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+            <select formControlName="brand" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option *ngFor="let brand of brandOptions.slice(1)" [value]="brand">{{ brand }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+            <input type="text" formControlName="model" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select formControlName="status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option *ngFor="let status of statusOptions.slice(1)" [value]="status">{{ status }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Allocated To</label>
+            <input type="text" formControlName="allocatedTo" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+            <select formControlName="vendor" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option *ngFor="let vendor of vendorOptions.slice(1)" [value]="vendor">{{ vendor }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Vendor Email</label>
+            <input type="email" formControlName="vendorEmail" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Vendor Contact</label>
+            <input type="text" formControlName="vendorContact" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Warranty Expiry</label>
+            <input type="date" formControlName="warrantyExpiry" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+        <div class="flex justify-end space-x-2 mt-6">
+          <button type="button" (click)="closeAddAssetModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
+            {{ editingAsset ? 'Update Asset' : 'Add Asset' }}
+          </button>
         </div>
       </form>
     </div>

@@ -1,16 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { AssetManagementHrComponent } from './asset-management-hr.component';
+import { AssetManagementComponent } from './asset-management-hr.component';
 
-describe('AssetManagementHrComponent', () => {
-  let component: AssetManagementHrComponent;
-  let fixture: ComponentFixture<AssetManagementHrComponent>;
+describe('AssetManagementComponent', () => {
+  let component: AssetManagementComponent;
+  let fixture: ComponentFixture<AssetManagementComponent>;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      declarations: [AssetManagementHrComponent]
+      declarations: [AssetManagementComponent]
     });
-    fixture = TestBed.createComponent(AssetManagementHrComponent);
+    fixture = TestBed.createComponent(AssetManagementComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
   });
