@@ -790,16 +790,26 @@ router.post('/update-leave-balance', (req, res) => {
 router.get('/assets', (req, res) => {
   const { search, status, type, brand, vendor, page = 1, limit = 10 } = req.query;
   
-  let sql = `
-    SELECT a.*, 
-           v.name as vendor_name, 
-           v.contact_person as vendor_contact_person,
-           v.email as vendor_email,
-           v.phone as vendor_phone
-    FROM assets a
-    LEFT JOIN vendors v ON a.vendor = v.name
-    WHERE 1=1
-  `;
+ // In your /assets endpoint, modify the SQL query to include reason/notes:
+let sql = `
+  SELECT a.*, 
+         v.name as vendor_name, 
+         v.contact_person as vendor_contact_person,
+         v.email as vendor_email,
+         v.phone as vendor_phone,
+         a.created_at,
+         COALESCE(
+           (SELECT ah.notes
+            FROM asset_allocation_history ah
+            WHERE ah.asset_id = a.asset_id
+            ORDER BY ah.allocated_date DESC
+            LIMIT 1),
+           a.reason
+         ) AS reason
+  FROM assets a
+  LEFT JOIN vendors v ON a.vendor = v.name
+  WHERE 1=1
+`;
   let params = [];
 
   if (search) {
@@ -889,6 +899,30 @@ router.get('/assets', (req, res) => {
   });
 });
 
+// Get next incremental asset ID
+
+router.get('/assets/next-id', (req, res) => {
+  const year = new Date().getFullYear();
+  const prefix = `AID${year}`;
+  
+  const sql = `
+    SELECT LPAD(COALESCE(MAX(CAST(SUBSTRING(asset_id, 8) AS UNSIGNED)), 0) + 1, 4, '0') AS seq
+    FROM assets
+    WHERE asset_id LIKE ?
+  `;
+
+  db.query(sql, [`${prefix}%`], (err, results) => {
+    if (err) {
+      console.error('Error fetching next asset id:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    const seq = results[0]?.seq || '0001';
+    const nextId = `${prefix}${seq}`;
+    
+    res.json({ success: true, data: { nextId } });
+  });
+});
 // Get asset by ID
 router.get('/assets/:id', (req, res) => {
   const { id } = req.params;
@@ -918,10 +952,11 @@ router.get('/assets/:id', (req, res) => {
   });
 });
 
-// Create new asset
+// Create new asset (auto-generate asset_id if not provided)
 router.post('/assets', (req, res) => {
-  const {
+  let {
     asset_id,
+    serial_number,
     name,
     type,
     brand,
@@ -936,34 +971,60 @@ router.post('/assets', (req, res) => {
     purchase_cost
   } = req.body;
 
-  const sql = `
-    INSERT INTO assets (
-      asset_id, name, type, brand, model, status, allocated_to, 
-      vendor, vendor_email, vendor_contact, warranty_expiry, 
+  // Allow alias from frontend
+  asset_id = asset_id || serial_number;
+
+  const insert = (finalAssetId) => {
+    const sql = `
+      INSERT INTO assets (
+        asset_id, name, type, brand, model, status, allocated_to, 
+        vendor, vendor_email, vendor_contact, warranty_expiry, 
+        purchase_date, purchase_cost
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const values = [
+      finalAssetId, name, type, brand, model, status || 'Available', allocated_to,
+      vendor, vendor_email, vendor_contact, warranty_expiry,
       purchase_date, purchase_cost
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+    ];
 
-  const values = [
-    asset_id, name, type, brand, model, status || 'Available', allocated_to,
-    vendor, vendor_email, vendor_contact, warranty_expiry,
-    purchase_date, purchase_cost
-  ];
-
-  db.query(sql, values, (err, results) => {
-    if (err) {
-      console.error('Error creating asset:', err);
-      if (err.code === 'ER_DUP_ENTRY') {
-        return res.status(409).json({ success: false, message: 'Asset ID already exists' });
+    db.query(sql, values, (err, results) => {
+      if (err) {
+        console.error('Error creating asset:', err);
+        if (err.code === 'ER_DUP_ENTRY') {
+          return res.status(409).json({ success: false, message: 'Asset ID already exists' });
+        }
+        return res.status(500).json({ success: false, message: 'Server error' });
       }
+
+      res.status(201).json({ 
+        success: true, 
+        message: 'Asset created successfully',
+        data: { id: results.insertId, asset_id: finalAssetId }
+      });
+    });
+  };
+
+  if (asset_id) {
+    return insert(asset_id);
+  }
+
+  const year = new Date().getFullYear();
+  const prefix = `AID${year}`;
+  const nextSql = `
+    SELECT LPAD(COALESCE(MAX(CAST(SUBSTRING(asset_id, 8) AS UNSIGNED)), 0) + 1, 4, '0') AS seq
+    FROM assets
+    WHERE asset_id LIKE ?
+  `;
+  db.query(nextSql, [`${prefix}%`], (err, results) => {
+    if (err) {
+      console.error('Error generating next asset id:', err);
       return res.status(500).json({ success: false, message: 'Server error' });
     }
-
-    res.status(201).json({ 
-      success: true, 
-      message: 'Asset created successfully',
-      data: { id: results.insertId, asset_id }
-    });
+    const seq = results[0]?.seq || '0001';
+    const nextId = `${prefix}${seq}`;
+    insert(nextId);
   });
 });
 
@@ -1310,6 +1371,57 @@ router.get('/assets/:id/history', (req, res) => {
   });
 });
 
+
+// Departments and Employees APIs for allocation (based on grp_id in users)
+router.get('/departments', (req, res) => {
+  const GROUP_MAP = {
+    1: 'Admin',
+    2: 'HR', 
+    3: 'Developers',
+    4: 'Managers',
+    5: 'Designing',
+    6: 'Content',
+    7: 'Motion Design'
+  };
+
+  const sql = 'SELECT DISTINCT grp_id FROM users WHERE grp_id IS NOT NULL ORDER BY grp_id';
+  
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Error fetching departments (grp_id):', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    const departments = results
+      .map(row => ({ 
+        grp_id: row.grp_id, 
+        name: GROUP_MAP[row.grp_id] || `Group ${row.grp_id}` 
+      }))
+      .filter(dept => dept.grp_id);
+
+    res.json({ success: true, data: departments });
+  });
+});
+
+router.get('/employees/by-group', (req, res) => {
+  const { grp_id } = req.query;
+  if (!grp_id) {
+    return res.status(400).json({ success: false, message: 'grp_id is required' });
+  }
+  const sql = `
+    SELECT employee_id, name, grp_id
+    FROM users
+    WHERE grp_id = ?
+    ORDER BY name
+  `;
+  db.query(sql, [grp_id], (err, results) => {
+    if (err) {
+      console.error('Error fetching employees by grp_id:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+    res.json({ success: true, data: results });
+  });
+});
 
   return router;
 };

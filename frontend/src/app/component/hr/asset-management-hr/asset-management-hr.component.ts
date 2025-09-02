@@ -6,11 +6,14 @@ import { MatPaginator, PageEvent } from '@angular/material/paginator';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { MatMenuTrigger } from '@angular/material/menu';
 
 interface Evidence {
   type: 'image' | 'video';
   url: string;
 }
+
+
 
 interface ActivityLog {
   timestamp: Date;
@@ -36,25 +39,28 @@ interface DateGroup {
 
 export interface Asset {
   id?: number;
-  assetId: string;  // Changed from asset_id to assetId
+  assetId?: string;
+  serialNumber: string;  // Changed from assetId to serialNumber
   name: string;
   type: string;
   brand: string;
   model: string;
   status: string;
-  allocatedTo?: string;  // Changed from allocated_to
+  allocatedTo?: string;
   vendor: string;
-  vendorEmail?: string;  // Changed from vendor_email
-  vendorContact?: string;  // Changed from vendor_contact
-  warrantyExpiry?: string;  // Changed from warranty_expiry
-  purchaseDate?: string;  // Changed from purchase_date
-  purchaseCost?: number;  // Changed from purchase_cost
+  vendorEmail?: string;
+  vendorContact?: string;
+  warrantyExpiry?: string;
+  purchaseDate?: string;
+  purchaseCost?: number;
+  createdAt?: string;
+  reason?: string;
 }
 
 export interface Vendor {
   id?: number;
   name: string;
-  contact: string;  // Changed to match template
+  contactPerson: string;  // Changed from contact to contactPerson
   email: string;
   phone?: string;
   address?: string;
@@ -73,6 +79,7 @@ export interface AssetResponse {
 
 interface Ticket {
   id: string;
+  employeeId?: string;
   employee: string;
   status: string;
   issue: string;
@@ -89,28 +96,38 @@ export class AssetManagementComponent implements OnInit {
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild('vendorPaginator') vendorPaginator!: MatPaginator;
   @ViewChild('ticketPaginator') ticketPaginator!: MatPaginator;
+  @ViewChild(MatMenuTrigger) menuTrigger!: MatMenuTrigger;
 
   isSidebarMinimized = false;
   currentDate = new Date();
   activeSection = 'assets';
-  
+  getDepartmentName(grpId: number): string {
+  const department = this.departmentOptions.find(dept => dept.grp_id === grpId);
+  return department ? department.name : 'Unknown Department';
+}
   // Vendor Management
   vendorList: Vendor[] = [];
   vendorDataSource: MatTableDataSource<Vendor>;
-  vendorDisplayedColumns: string[] = ['name', 'contact', 'email', 'actions'];
+  vendorDisplayedColumns: string[] = ['name', 'contactPerson', 'email', 'phone', 'actions'];
   showVendorModal = false;
   editingVendor: Vendor | null = null;
+  selectedVendor: Vendor | null = null;
   vendorForm: FormGroup;
+  allocationReason: string = '';
   
   // Asset Management
   showAssetModal = false;
   editingAsset: Asset | null = null;
   assetForm: FormGroup;
+  nextAssetId: string | null = null;
   assetDataSource: MatTableDataSource<Asset>;
-  assetDisplayedColumns: string[] = [
-    'assetId', 'name', 'type', 'brandModel', 'status', 
-    'allocatedTo', 'vendor', 'vendorContact', 'warrantyExpiry', 'actions'
-  ];
+
+assetDisplayedColumns: string[] = [
+  'serialNumber', 'name', 'type', 'brandModel', 'status', 
+  'allocatedTo', 'vendor', 'vendorContact', 'warrantyExpiry', 
+  'createdAt', 'reason', 'actions' 
+];
+  // We'll show reason in a tooltip in the table UI
   
   // Filter Controls
   searchControl = new FormControl('');
@@ -125,6 +142,10 @@ export class AssetManagementComponent implements OnInit {
   brandOptions: string[] = ['', 'Dell', 'HP', 'Apple', 'Lenovo', 'Samsung', 'Acer', 'Asus', 'Microsoft'];
   vendorOptions: string[] = [''];
   
+  // Department and Employee Options (from API)
+  departmentOptions: { grp_id: number; name: string }[] = [];
+  filteredEmployees: { employee_id: string; name: string; grp_id: number }[] = [];
+  
   // Assets Data
   assets: Asset[] = [];
   totalAssets = 0;
@@ -133,9 +154,9 @@ export class AssetManagementComponent implements OnInit {
   isLoading = false;
 
   // Ticket Management
-  activeTickets = 12;
-  closedTickets = 45;
-  pendingTickets = 8;
+  activeTickets = 0;
+  closedTickets = 0;
+  pendingTickets = 0;
   ticketList: Ticket[] = [
     { 
       id: '1001', 
@@ -149,6 +170,7 @@ export class AssetManagementComponent implements OnInit {
     },
     { 
       id: '1002', 
+      employeeId: 'EMP-102',
       employee: 'Priya Patel', 
       status: 'Pending', 
       issue: 'Monitor flickering',
@@ -158,6 +180,7 @@ export class AssetManagementComponent implements OnInit {
     },
     { 
       id: '1003', 
+      employeeId: 'EMP-103',
       employee: 'Amit Kumar', 
       status: 'Open', 
       issue: 'Keyboard not working',
@@ -165,6 +188,7 @@ export class AssetManagementComponent implements OnInit {
     },
     { 
       id: '1004', 
+      employeeId: 'EMP-104',
       employee: 'Sneha Desai', 
       status: 'Closed', 
       issue: 'Software installation',
@@ -172,7 +196,7 @@ export class AssetManagementComponent implements OnInit {
     }
   ];
   ticketDataSource: MatTableDataSource<Ticket>;
-  ticketDisplayedColumns: string[] = ['id', 'employee', 'status', 'issue', 'evidence', 'actions'];
+  ticketDisplayedColumns: string[] = ['id', 'employeeId', 'employee', 'status', 'issue', 'evidence', 'actions'];
   selectedTicket: Ticket | null = null;
   ticketResponse = '';
   informationRequest = '';
@@ -237,27 +261,31 @@ export class AssetManagementComponent implements OnInit {
     // Initialize vendor form with correct field names
     this.vendorForm = this.fb.group({
       name: ['', Validators.required],
-      contact: ['', Validators.required],  // Changed from contact_person
+      contactPerson: ['', Validators.required],  // Changed from contact to contactPerson
       email: ['', [Validators.required, Validators.email]],
-      phone: ['']
+      phone: [''],
+      address: ['']
     });
     
+    
     // Initialize asset form with correct field names matching template
-    this.assetForm = this.fb.group({
-      assetId: ['', Validators.required],  // Changed from asset_id
-      name: ['', Validators.required],
-      type: ['', Validators.required],
-      brand: ['', Validators.required],
-      model: ['', Validators.required],
-      status: ['Available', Validators.required],
-      allocatedTo: [''],  // Changed from allocated_to
-      vendor: ['', Validators.required],
-      vendorEmail: ['', [Validators.required, Validators.email]],  // Changed from vendor_email
-      vendorContact: ['', Validators.required],  // Changed from vendor_contact
-      warrantyExpiry: [''],  // Changed from warranty_expiry
-      purchaseDate: [''],  // Changed from purchase_date
-      purchaseCost: ['']  // Changed from purchase_cost
-    });
+this.assetForm = this.fb.group({
+  assetId: ['', Validators.required],
+  serialNumber: ['', Validators.required],
+  name: ['', Validators.required],
+  type: ['', Validators.required],
+  brand: ['', Validators.required],
+  model: ['', Validators.required],
+  status: ['Available', Validators.required],
+  allocatedTo: [''],
+  vendor: ['', Validators.required],
+  vendorEmail: ['', [Validators.required, Validators.email]],
+  vendorContact: ['', Validators.required],
+  warrantyExpiry: [''],
+  purchaseDate: [''],
+  purchaseCost: [''],
+  allocationReason: ['']
+});
     
     // Initialize data sources
     this.vendorDataSource = new MatTableDataSource(this.vendorList);
@@ -269,6 +297,8 @@ export class AssetManagementComponent implements OnInit {
     this.loadAssets();
     this.loadVendors();
     this.setupFilterSubscriptions();
+    this.setupStatusChangeListener();
+    this.updateTicketCounts();
   }
 
   ngAfterViewInit() {
@@ -302,29 +332,33 @@ export class AssetManagementComponent implements OnInit {
   // ==================== ASSET MANAGEMENT FUNCTIONS ====================
 
   // Convert backend response to frontend format
-  private mapAssetFromAPI(apiAsset: any): Asset {
-    return {
-      id: apiAsset.id,
-      assetId: apiAsset.asset_id,
-      name: apiAsset.name,
-      type: apiAsset.type,
-      brand: apiAsset.brand,
-      model: apiAsset.model,
-      status: apiAsset.status,
-      allocatedTo: apiAsset.allocated_to,
-      vendor: apiAsset.vendor,
-      vendorEmail: apiAsset.vendor_email,
-      vendorContact: apiAsset.vendor_contact,
-      warrantyExpiry: apiAsset.warranty_expiry,
-      purchaseDate: apiAsset.purchase_date,
-      purchaseCost: apiAsset.purchase_cost
-    };
-  }
+ // Update the mapAssetFromAPI method to include createdAt and reason
+private mapAssetFromAPI(apiAsset: any): Asset {
+  return {
+    id: apiAsset.id,
+    assetId: apiAsset.asset_id,
+    serialNumber: apiAsset.serial_number || apiAsset.asset_id,
+    name: apiAsset.name,
+    type: apiAsset.type,
+    brand: apiAsset.brand,
+    model: apiAsset.model,
+    status: apiAsset.status,
+    allocatedTo: apiAsset.allocated_to,
+    vendor: apiAsset.vendor,
+    vendorEmail: apiAsset.vendor_email,
+    vendorContact: apiAsset.vendor_contact,
+    warrantyExpiry: apiAsset.warranty_expiry,
+    purchaseDate: apiAsset.purchase_date,
+    purchaseCost: apiAsset.purchase_cost,
+    createdAt: apiAsset.created_at,  // Use created_at instead of lastAllocatedDate
+    reason: apiAsset.notes || apiAsset.reason  // Use notes field or dedicated reason field
+  };
+}
 
   // Convert frontend format to backend format
   private mapAssetToAPI(asset: Asset): any {
     return {
-      asset_id: asset.assetId,
+      serial_number: asset.serialNumber, // Changed to serial_number
       name: asset.name,
       type: asset.type,
       brand: asset.brand,
@@ -364,7 +398,7 @@ export class AssetManagementComponent implements OnInit {
       const searchStr = filterObject.search;
       
       const matchesSearch = !searchStr || 
-        data.assetId.toLowerCase().includes(searchStr) ||
+        data.serialNumber.toLowerCase().includes(searchStr) ||
         data.name.toLowerCase().includes(searchStr) ||
         data.type.toLowerCase().includes(searchStr) ||
         data.brand.toLowerCase().includes(searchStr) ||
@@ -418,7 +452,7 @@ export class AssetManagementComponent implements OnInit {
   useDemoAssets(): void {
     this.assets = [
       { 
-        assetId: 'AST001', 
+        serialNumber: 'SN001', 
         name: 'MacBook Pro', 
         type: 'Laptop', 
         brand: 'Apple', 
@@ -431,7 +465,7 @@ export class AssetManagementComponent implements OnInit {
         warrantyExpiry: '2024-12-15' 
       },
       { 
-        assetId: 'AST002', 
+        serialNumber: 'SN002', 
         name: 'UltraSharp Monitor', 
         type: 'Monitor', 
         brand: 'Dell', 
@@ -444,7 +478,7 @@ export class AssetManagementComponent implements OnInit {
         warrantyExpiry: '2025-03-20' 
       },
       { 
-        assetId: 'AST003', 
+        serialNumber: 'SN003', 
         name: 'ThinkPad', 
         type: 'Laptop', 
         brand: 'Lenovo', 
@@ -476,9 +510,10 @@ export class AssetManagementComponent implements OnInit {
             this.vendorList = response.data.map(vendor => ({
               id: vendor.id,
               name: vendor.name,
-              contact: vendor.contact_person, // Map contact_person to contact
+              contactPerson: vendor.contact_person,
               email: vendor.email,
-              phone: vendor.phone
+              phone: vendor.phone,
+              address: vendor.address
             }));
             this.vendorDataSource.data = this.vendorList;
             
@@ -498,12 +533,63 @@ export class AssetManagementComponent implements OnInit {
   // Use demo vendors if API fails
   useDemoVendors(): void {
     this.vendorList = [
-      { name: 'Tech Suppliers Inc.', contact: 'John Doe', email: 'john@techsuppliers.com' },
-      { name: 'Hardware Solutions', contact: 'Jane Smith', email: 'jane@hardwaresolutions.com' },
-      { name: 'IT Equipment Co.', contact: 'Robert Johnson', email: 'robert@itequipment.com' }
+      { name: 'Tech Suppliers Inc.', contactPerson: 'John Doe', email: 'john@techsuppliers.com', phone: '+1-555-0123', address: '123 Tech Park, City' },
+      { name: 'Hardware Solutions', contactPerson: 'Jane Smith', email: 'jane@hardwaresolutions.com', phone: '+1-555-0456', address: '45 Hardware Ave, City' },
+      { name: 'IT Equipment Co.', contactPerson: 'Robert Johnson', email: 'robert@itequipment.com', phone: '+1-555-0789', address: '9 Industrial Rd, City' }
     ];
     this.vendorDataSource.data = this.vendorList;
     this.vendorOptions = ['', ...this.vendorList.map(v => v.name)];
+  }
+
+  // Handle department change for employee dropdown
+onDepartmentChange(event: any): void {
+  const departmentId = event.target.value;
+  this.filteredEmployees = [];
+  
+  if (!departmentId) {
+    this.assetForm.get('allocatedTo')?.setValue('');
+    return;
+  }
+  
+  // Make API call to get employees by group ID
+  this.http.get<any>('http://localhost:3000/api/employees/by-group', {
+    params: new HttpParams().set('grp_id', departmentId)
+  }).subscribe({
+    next: (resp) => {
+      if (resp?.success && Array.isArray(resp.data)) {
+        this.filteredEmployees = resp.data;
+        console.log('Filtered employees:', this.filteredEmployees);
+      } else {
+        this.filteredEmployees = [];
+        console.warn('No employees found for department:', departmentId);
+      }
+      this.assetForm.get('allocatedTo')?.setValue('');
+    },
+    error: (error) => {
+      console.error('Error fetching employees:', error);
+      this.filteredEmployees = [];
+      this.assetForm.get('allocatedTo')?.setValue('');
+    }
+  });
+}
+
+  // Handle vendor change to auto-fill vendor details
+  onVendorChange(event: any): void {
+    const vendorName = event.target.value;
+    if (vendorName) {
+      const vendor = this.vendorList.find(v => v.name === vendorName);
+      if (vendor) {
+        this.assetForm.patchValue({
+          vendorEmail: vendor.email,
+          vendorContact: vendor.contactPerson
+        });
+      }
+    } else {
+      this.assetForm.patchValue({
+        vendorEmail: '',
+        vendorContact: ''
+      });
+    }
   }
 
   // Handle pagination events
@@ -519,19 +605,81 @@ export class AssetManagementComponent implements OnInit {
     this.assetForm.reset({
       status: 'Available'
     });
+    this.filteredEmployees = [];
     this.showAssetModal = true;
+
+    // Fetch next auto-increment asset id
+    this.http.get<any>('http://localhost:3000/api/assets/next-id')
+      .subscribe({
+        next: (resp) => {
+          if (resp?.success && resp?.data?.nextId) {
+            this.nextAssetId = resp.data.nextId;
+            this.assetForm.patchValue({ assetId: this.nextAssetId });
+          } else {
+            this.nextAssetId = null;
+          }
+        },
+        error: () => {
+          this.nextAssetId = null;
+        }
+      });
+
+    // Load departments dynamically
+    this.http.get<any>('http://localhost:3000/api/departments')
+      .subscribe({
+        next: (resp) => {
+          if (resp?.success && Array.isArray(resp.data)) {
+            this.departmentOptions = resp.data;
+          } else {
+            this.departmentOptions = [];
+          }
+        },
+        error: () => {
+          this.departmentOptions = [];
+        }
+      });
   }
+
+
+  // Add this method to your component class
+setupStatusChangeListener(): void {
+  this.assetForm.get('status')?.valueChanges.subscribe((status) => {
+    const reasonControl = this.assetForm.get('reason');
+    
+    if (status === 'Maintenance' || status === 'Retired') {
+      // Add validation for reason when status is Maintenance or Retired
+      if (!reasonControl) {
+        this.assetForm.addControl('reason', new FormControl('', Validators.required));
+      } else {
+        reasonControl.setValidators(Validators.required);
+      }
+    } else {
+      // Remove validation and clear value for other statuses
+      if (reasonControl) {
+        reasonControl.clearValidators();
+        reasonControl.setValue('');
+        reasonControl.updateValueAndValidity();
+      }
+    }
+  });
+}
 
   // Edit Asset
   editAsset(asset: Asset): void {
     this.editingAsset = asset;
+    
+    // Determine department based on allocated employee
+    let department = '';
+    
     this.assetForm.patchValue({
       assetId: asset.assetId,
+      serialNumber: asset.serialNumber,
       name: asset.name,
       type: asset.type,
       brand: asset.brand,
       model: asset.model,
       status: asset.status,
+      department: department,
       allocatedTo: asset.allocatedTo,
       vendor: asset.vendor,
       vendorEmail: asset.vendorEmail,
@@ -540,6 +688,10 @@ export class AssetManagementComponent implements OnInit {
       purchaseDate: asset.purchaseDate ? asset.purchaseDate.split('T')[0] : '',
       purchaseCost: asset.purchaseCost
     });
+    
+    // Set filtered employees based on department
+    this.filteredEmployees = [];
+    
     this.showAssetModal = true;
   }
 
@@ -548,6 +700,7 @@ export class AssetManagementComponent implements OnInit {
     this.showAssetModal = false;
     this.editingAsset = null;
     this.assetForm.reset();
+    this.filteredEmployees = [];
   }
 
   // Submit Asset Form
@@ -555,8 +708,16 @@ export class AssetManagementComponent implements OnInit {
     if (this.assetForm.valid) {
       const formValue = this.assetForm.value;
       
-      // Convert frontend format to backend format
-      const apiPayload = this.mapAssetToAPI(formValue);
+      // In your onAssetSubmit() method, modify the payload creation:
+const apiPayload = this.mapAssetToAPI(formValue);
+(apiPayload as any).asset_id = formValue.assetId || this.nextAssetId;
+(apiPayload as any).serial_number = formValue.serialNumber;
+
+// Only include reason for Maintenance or Retired status
+if ((formValue.status === 'Maintenance' || formValue.status === 'Retired') && this.allocationReason) {
+  (apiPayload as any).notes = this.allocationReason;
+}
+
       
       // Convert empty strings to null for optional fields
       Object.keys(apiPayload).forEach(key => {
@@ -593,6 +754,7 @@ export class AssetManagementComponent implements OnInit {
                 this.loadAssets(); // Reload to get fresh data including the new asset
                 this.closeAddAssetModal();
                 alert('Asset added successfully!');
+                this.nextAssetId = null;
               } else {
                 alert('Failed to add asset. Please try again.');
               }
@@ -614,8 +776,8 @@ export class AssetManagementComponent implements OnInit {
 
   // Delete Asset
   deleteAsset(asset: Asset): void {
-    if (confirm(`Are you sure you want to delete asset ${asset.assetId}?`)) {
-      this.http.delete(`http://localhost:3000/api/assets/${asset.assetId}`)
+    if (confirm(`Are you sure you want to delete asset ${asset.serialNumber}?`)) {
+      this.http.delete(`http://localhost:3000/api/assets/${asset.assetId || asset.serialNumber}`)
         .subscribe({
           next: (response: any) => {
             if (response.success) {
@@ -660,9 +822,10 @@ export class AssetManagementComponent implements OnInit {
       // Convert to backend format
       const apiPayload = {
         name: formValue.name,
-        contact_person: formValue.contact,
+        contact_person: formValue.contactPerson,
         email: formValue.email,
-        phone: formValue.phone || null
+        phone: formValue.phone || null,
+        address: formValue.address || null
       };
       
       if (this.editingVendor) {
@@ -746,6 +909,7 @@ export class AssetManagementComponent implements OnInit {
       if (index !== -1) {
         this.ticketList[index].status = this.selectedTicket!.status;
         this.ticketDataSource.data = [...this.ticketList];
+        this.updateTicketCounts();
       }
       
       // Add to activity logs for HR response
@@ -774,6 +938,16 @@ export class AssetManagementComponent implements OnInit {
       
       this.selectedTicket = null;
     }
+  }
+
+  // Recalculate ticket counters based on ticketList
+  updateTicketCounts(): void {
+    const open = this.ticketList.filter(t => t.status === 'Open').length;
+    const pending = this.ticketList.filter(t => t.status === 'Pending').length;
+    const closed = this.ticketList.filter(t => t.status === 'Closed').length;
+    this.activeTickets = open;
+    this.pendingTickets = pending;
+    this.closedTickets = closed;
   }
 
   openEvidenceModal(evidence: Evidence): void {

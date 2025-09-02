@@ -1,9 +1,9 @@
 <div class="flex h-screen bg-gray-50">
   <!-- Main HR Sidebar -->
-<app-hr-side-navbar 
-    [isMinimized]="isSidebarMinimized" 
-    (toggleMinimized)="onSidebarToggle($event)">
-  </app-hr-side-navbar>
+  <app-hr-side-navbar 
+      [isMinimized]="isSidebarMinimized" 
+      (toggleMinimized)="onSidebarToggle($event)">
+    </app-hr-side-navbar>
 
   <!-- Page Layout -->
   <div class="flex-1 flex flex-col transition-all duration-300 ease-in-out overflow-hidden w-full">
@@ -19,12 +19,12 @@
     <!-- Page Content with Left Sub-Nav -->
     <div class="flex flex-1 overflow-hidden">
 
-      <!-- Secondary Sidebar -->
+      <!-- Secondary Sidebar -->  
       <aside class="w-52 bg-white border-r border-gray-200 p-4 space-y-1 ">
         <button (click)="activeSection = 'vendors'" 
                 [ngClass]="{ 'bg-indigo-100 text-indigo-700': activeSection==='vendors' }"
                 class="w-full text-left px-4 py-2 rounded-lg hover:bg-indigo-50 transition">
-          Vendor Management
+          Vendors
         </button>
         <button (click)="activeSection = 'assets'" 
                 [ngClass]="{ 'bg-indigo-100 text-indigo-700': activeSection==='assets' }"
@@ -46,7 +46,7 @@
       <!-- Main Dynamic Section -->
       <main class="flex-1 p-6 overflow-auto">
         
-        <!-- Vendor Management -->
+        <!-- Vendors -->
         <section *ngIf="activeSection === 'vendors'" class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
           <div class="h-2 bg-indigo-600"></div>
           <div class="p-6">
@@ -56,7 +56,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
-              <h3 class="font-bold text-xl text-gray-800">Vendor Management</h3>
+              <h3 class="font-bold text-xl text-gray-800">Vendors</h3>
             </div>
             
             <button (click)="openAddVendorModal()" class="mb-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
@@ -73,10 +73,10 @@
                   <td mat-cell *matCellDef="let element"> {{element.name}} </td>
                 </ng-container>
                 
-                <!-- Contact Column -->
-                <ng-container matColumnDef="contact">
-                  <th mat-header-cell *matHeaderCellDef> Contact </th>
-                  <td mat-cell *matCellDef="let element"> {{element.contact}} </td>
+                <!-- Contact Person Column -->
+                <ng-container matColumnDef="contactPerson">
+                  <th mat-header-cell *matHeaderCellDef> Contact Person </th>
+                  <td mat-cell *matCellDef="let element"> {{element.contactPerson}} </td>
                 </ng-container>
                 
                 <!-- Email Column -->
@@ -85,16 +85,33 @@
                   <td mat-cell *matCellDef="let element"> {{element.email}} </td>
                 </ng-container>
                 
+                <!-- Phone Column -->
+                <ng-container matColumnDef="phone">
+                  <th mat-header-cell *matHeaderCellDef> Phone </th>
+                  <td mat-cell *matCellDef="let element"> {{element.phone || '—'}} </td>
+                </ng-container>
+                
                 <!-- Actions Column -->
                 <ng-container matColumnDef="actions">
                   <th mat-header-cell *matHeaderCellDef> Actions </th>
                   <td mat-cell *matCellDef="let element">
-                    <button mat-icon-button color="primary" (click)="editVendor(element)">
-                      <mat-icon>edit</mat-icon>
+                    <button mat-icon-button [matMenuTriggerFor]="menu" class="text-gray-500 hover:text-gray-700">
+                      <mat-icon>more_vert</mat-icon>
                     </button>
-                    <button mat-icon-button color="warn" (click)="deleteVendor(element)">
-                      <mat-icon>delete</mat-icon>
-                    </button>
+                    <mat-menu #menu="matMenu">
+                      <button mat-menu-item (click)="selectedVendor = element">
+                        <mat-icon>visibility</mat-icon>
+                        <span>View</span>
+                      </button>
+                      <button mat-menu-item (click)="editVendor(element)">
+                        <mat-icon>edit</mat-icon>
+                        <span>Edit</span>
+                      </button>
+                      <button mat-menu-item (click)="deleteVendor(element)" class="text-red-600">
+                        <mat-icon>delete</mat-icon>
+                        <span>Delete</span>
+                      </button>
+                    </mat-menu>
                   </td>
                 </ng-container>
                 
@@ -122,7 +139,7 @@
                   <h3 class="font-bold text-xl text-gray-800">All Assets</h3>
                 </div>
                 <button (click)="openAddAssetModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
-                  + Add Asset
+                  + Add Device
                 </button>
               </div>
 
@@ -163,10 +180,10 @@
               <div class="mat-elevation overflow-x-auto">
                 <table mat-table [dataSource]="assetDataSource" matSort class="w-full">
                   
-                  <!-- S/No Column -->
-                  <ng-container matColumnDef="assetId">
-                    <th mat-header-cell *matHeaderCellDef mat-sort-header> S/No. </th>
-                    <td mat-cell *matCellDef="let element"> {{element.assetId}} </td>
+                  <!-- Serial Number Column -->
+                  <ng-container matColumnDef="serialNumber">
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Serial Number </th>
+                    <td mat-cell *matCellDef="let element"> {{element.serialNumber}} </td>
                   </ng-container>
                   
                   <!-- Name Column -->
@@ -209,7 +226,9 @@
                   <!-- Allocated To Column -->
                   <ng-container matColumnDef="allocatedTo">
                     <th mat-header-cell *matHeaderCellDef mat-sort-header> Allocated To </th>
-                    <td mat-cell *matCellDef="let element"> {{element.allocatedTo || '—'}} </td>
+                    <td mat-cell *matCellDef="let element">
+                      <span [matTooltip]="element.lastAllocationReason || ''">{{element.allocatedTo || '—'}}</span>
+                    </td>
                   </ng-container>
                   
                   <!-- Vendor Column -->
@@ -232,17 +251,41 @@
                     <th mat-header-cell *matHeaderCellDef mat-sort-header> Warranty Valid Till </th>
                     <td mat-cell *matCellDef="let element"> {{element.warrantyExpiry | date}} </td>
                   </ng-container>
+
+                  <!-- Date Allocated Column -->
+              <!-- Update the Warranty Expiry column to use created_at -->
+<ng-container matColumnDef="createdAt">
+  <th mat-header-cell *matHeaderCellDef mat-sort-header> Date Allocated </th>
+  <td mat-cell *matCellDef="let element"> 
+    {{element.createdAt | date:'shortDate'}} 
+  </td>
+</ng-container>
+
+<!-- Add a new Reason column -->
+<ng-container matColumnDef="reason">
+  <th mat-header-cell *matHeaderCellDef> Reason </th>
+  <td mat-cell *matCellDef="let element"> 
+    {{element.reason || '—'}}
+  </td>
+</ng-container>
                   
                   <!-- Actions Column -->
                   <ng-container matColumnDef="actions">
                     <th mat-header-cell *matHeaderCellDef> Actions </th>
                     <td mat-cell *matCellDef="let element">
-                      <button mat-icon-button color="primary" (click)="editAsset(element)">
-                        <mat-icon>edit</mat-icon>
+                      <button mat-icon-button [matMenuTriggerFor]="menu" class="text-gray-500 hover:text-gray-700">
+                        <mat-icon>more_vert</mat-icon>
                       </button>
-                      <button mat-icon-button color="warn" (click)="deleteAsset(element)">
-                        <mat-icon>delete</mat-icon>
-                      </button>
+                      <mat-menu #menu="matMenu">
+                        <button mat-menu-item (click)="editAsset(element)">
+                          <mat-icon>edit</mat-icon>
+                          <span>Edit</span>
+                        </button>
+                        <button mat-menu-item (click)="deleteAsset(element)" class="text-red-600">
+                          <mat-icon>delete</mat-icon>
+                          <span>Delete</span>
+                        </button>
+                      </mat-menu>
                     </td>
                   </ng-container>
                   
@@ -301,6 +344,12 @@
                   <th mat-header-cell *matHeaderCellDef> Ticket ID </th>
                   <td mat-cell *matCellDef="let element"> #{{element.id}} </td>
                 </ng-container>
+
+                <!-- Employee ID Column -->
+                <ng-container matColumnDef="employeeId">
+                  <th mat-header-cell *matHeaderCellDef> Employee ID </th>
+                  <td mat-cell *matCellDef="let element"> {{element.employeeId || '—'}} </td>
+                </ng-container>
                 
                 <!-- Employee Column -->
                 <ng-container matColumnDef="employee">
@@ -349,9 +398,15 @@
                 <ng-container matColumnDef="actions">
                   <th mat-header-cell *matHeaderCellDef> Actions </th>
                   <td mat-cell *matCellDef="let element">
-                    <button mat-raised-button color="primary" (click)="openTicketAction(element)">
-                      Take Action
+                    <button mat-icon-button [matMenuTriggerFor]="menu" class="text-gray-500 hover:text-gray-700">
+                      <mat-icon>more_vert</mat-icon>
                     </button>
+                    <mat-menu #menu="matMenu">
+                      <button mat-menu-item (click)="openTicketAction(element)">
+                        <mat-icon>build</mat-icon>
+                        <span>Take Action</span>
+                      </button>
+                    </mat-menu>
                   </td>
                 </ng-container>
                 
@@ -433,7 +488,7 @@
         </div>
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
-          <input type="text" formControlName="contact" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <input type="text" formControlName="contactPerson" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
         </div>
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -443,6 +498,10 @@
           <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
           <input type="tel" formControlName="phone" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
         </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
+          <textarea formControlName="address" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+        </div>
         <div class="flex justify-end space-x-2 mt-6">
           <button type="button" (click)="closeAddVendorModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
           <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
@@ -450,6 +509,45 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Vendor View Modal -->
+<div *ngIf="selectedVendor" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+    <div class="flex justify-between items-center p-4 border-b">
+      <h3 class="text-lg font-semibold">Vendor Details</h3>
+      <button (click)="selectedVendor = null" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="p-4 space-y-2">
+      <div>
+        <div class="text-sm text-gray-500">Name</div>
+        <div class="font-medium">{{ selectedVendor?.name }}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Contact Person</div>
+        <div class="font-medium">{{ selectedVendor?.contactPerson }}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Email</div>
+        <div class="font-medium">{{ selectedVendor?.email }}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Phone</div>
+        <div class="font-medium">{{ selectedVendor?.phone || '—' }}</div>
+      </div>
+      <div>
+        <div class="text-sm text-gray-500">Address</div>
+        <div class="font-medium whitespace-pre-wrap">{{ selectedVendor?.address || '—' }}</div>
+      </div>
+    </div>
+    <div class="p-4 border-t flex justify-end">
+      <button (click)="selectedVendor = null" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Close</button>
     </div>
   </div>
 </div>
@@ -470,7 +568,12 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Asset ID</label>
-            <input type="text" formControlName="assetId" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <input type="text" formControlName="assetId" [readonly]="nextAssetId !== null && !editingAsset" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Serial Number</label>
+            <input type="text" formControlName="serialNumber"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
@@ -498,23 +601,49 @@
               <option *ngFor="let status of statusOptions.slice(1)" [value]="status">{{ status }}</option>
             </select>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Allocated To</label>
-            <input type="text" formControlName="allocatedTo" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <div class="md:col-span-2">
+           <label class="block text-sm font-medium text-gray-700 mb-1">Allocate To</label>
+  <div class="grid grid-cols-2 gap-4">
+    <!-- Department Dropdown -->
+    <select (change)="onDepartmentChange($event)" 
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      <option value="">Select Department</option>
+      <option *ngFor="let dept of departmentOptions" [value]="dept.grp_id">
+        {{ getDepartmentName(dept.grp_id) }}
+      </option>
+    </select>
+    
+    <!-- Employee Dropdown -->
+    <select formControlName="allocatedTo" 
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      <option value="">Select Employee</option>
+      <option *ngFor="let emp of filteredEmployees" [value]="emp.employee_id">
+        {{ emp.name }} ({{ emp.employee_id }})
+      </option>
+    </select>
+            </div>
+          <!-- Replace the current allocation reason section with this conditional version -->
+<div class="mt-4" *ngIf="assetForm.get('status')?.value === 'Maintenance' || assetForm.get('status')?.value === 'Retired'">
+  <label class="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+  <textarea rows="2" [(ngModel)]="allocationReason" [ngModelOptions]="{standalone: true}"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="Enter reason for maintenance or retirement"></textarea>
+</div>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
-            <select formControlName="vendor" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <select formControlName="vendor" (change)="onVendorChange($event)" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Select Vendor</option>
               <option *ngFor="let vendor of vendorOptions.slice(1)" [value]="vendor">{{ vendor }}</option>
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Vendor Email</label>
-            <input type="email" formControlName="vendorEmail" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <input type="email" formControlName="vendorEmail" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" readonly>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Vendor Contact</label>
-            <input type="text" formControlName="vendorContact" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <input type="text" formControlName="vendorContact" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" readonly>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Warranty Expiry</label>
@@ -546,7 +675,7 @@
     <div class="p-4">
       <div class="mb-4 grid grid-cols-2 gap-4">
         <div>
-          <p class="font-medium">Employee: {{selectedTicket.employee}}</p>
+          <p class="font-medium">Employee: {{selectedTicket.employee}} <span class="text-xs text-gray-500" *ngIf="selectedTicket.employeeId">({{selectedTicket.employeeId}})</span></p>
           <p class="text-sm text-gray-600 mt-1">Issue: {{selectedTicket.issue}}</p>
         </div>
         <div>
