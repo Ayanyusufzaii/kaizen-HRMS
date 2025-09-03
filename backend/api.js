@@ -968,25 +968,23 @@ router.post('/assets', (req, res) => {
     vendor_contact,
     warranty_expiry,
     purchase_date,
-    purchase_cost
+    purchase_cost,
+    reason // Add reason to destructuring
   } = req.body;
-
-  // Allow alias from frontend
-  asset_id = asset_id || serial_number;
 
   const insert = (finalAssetId) => {
     const sql = `
       INSERT INTO assets (
-        asset_id, name, type, brand, model, status, allocated_to, 
+        asset_id, serial_no, name, type, brand, model, status, allocated_to, 
         vendor, vendor_email, vendor_contact, warranty_expiry, 
-        purchase_date, purchase_cost
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        purchase_date, purchase_cost, reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
-      finalAssetId, name, type, brand, model, status || 'Available', allocated_to,
+      finalAssetId, serial_number, name, type, brand, model, status || 'Available', allocated_to,
       vendor, vendor_email, vendor_contact, warranty_expiry,
-      purchase_date, purchase_cost
+      purchase_date, purchase_cost, reason || null // Add reason to values
     ];
 
     db.query(sql, values, (err, results) => {
@@ -1043,21 +1041,22 @@ router.put('/assets/:id', (req, res) => {
     vendor_contact,
     warranty_expiry,
     purchase_date,
-    purchase_cost
+    purchase_cost,
+    reason // Add reason to destructuring
   } = req.body;
 
   const sql = `
     UPDATE assets SET 
       name = ?, type = ?, brand = ?, model = ?, status = ?, 
       allocated_to = ?, vendor = ?, vendor_email = ?, vendor_contact = ?, 
-      warranty_expiry = ?, purchase_date = ?, purchase_cost = ?
+      warranty_expiry = ?, purchase_date = ?, purchase_cost = ?, reason = ?
     WHERE asset_id = ?
   `;
 
   const values = [
     name, type, brand, model, status, allocated_to, vendor, 
     vendor_email, vendor_contact, warranty_expiry, purchase_date, 
-    purchase_cost, id, id
+    purchase_cost, reason || null, id // Add reason to values
   ];
 
   db.query(sql, values, (err, results) => {

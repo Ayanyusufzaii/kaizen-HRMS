@@ -123,7 +123,7 @@ export class AssetManagementComponent implements OnInit {
   assetDataSource: MatTableDataSource<Asset>;
 
 assetDisplayedColumns: string[] = [
-  'serialNumber', 'name', 'type', 'brandModel', 'status', 
+  'assetId', 'serialNumber', 'name', 'type', 'brandModel', 'status', 
   'allocatedTo', 'vendor', 'vendorContact', 'warrantyExpiry', 
   'createdAt', 'reason', 'actions' 
 ];
@@ -293,13 +293,31 @@ this.assetForm = this.fb.group({
     this.ticketDataSource = new MatTableDataSource(this.ticketList);
   }
 
-  ngOnInit(): void {
-    this.loadAssets();
-    this.loadVendors();
-    this.setupFilterSubscriptions();
-    this.setupStatusChangeListener();
-    this.updateTicketCounts();
-  }
+ngOnInit(): void {
+  // Initialize asset form WITHOUT reason field
+  this.assetForm = this.fb.group({
+    assetId: ['', Validators.required],
+    serialNumber: ['', Validators.required],
+    name: ['', Validators.required],
+    type: ['', Validators.required],
+    brand: ['', Validators.required],
+    model: ['', Validators.required],
+    status: ['Available', Validators.required],
+    allocatedTo: [''],
+    vendor: ['', Validators.required],
+    vendorEmail: ['', [Validators.required, Validators.email]],
+    vendorContact: ['', Validators.required],
+    warrantyExpiry: [''],
+    purchaseDate: [''],
+    purchaseCost: ['']
+  });
+
+  this.loadAssets();
+  this.loadVendors();
+  this.setupFilterSubscriptions();
+  // REMOVE THIS LINE: this.setupStatusChangeListener();
+  this.updateTicketCounts();
+}
 
   ngAfterViewInit() {
     this.assetDataSource.sort = this.sort;
@@ -337,7 +355,7 @@ private mapAssetFromAPI(apiAsset: any): Asset {
   return {
     id: apiAsset.id,
     assetId: apiAsset.asset_id,
-    serialNumber: apiAsset.serial_number || apiAsset.asset_id,
+    serialNumber: apiAsset.serial_no, // Changed from serial_number to serial_no
     name: apiAsset.name,
     type: apiAsset.type,
     brand: apiAsset.brand,
@@ -350,8 +368,8 @@ private mapAssetFromAPI(apiAsset: any): Asset {
     warrantyExpiry: apiAsset.warranty_expiry,
     purchaseDate: apiAsset.purchase_date,
     purchaseCost: apiAsset.purchase_cost,
-    createdAt: apiAsset.created_at,  // Use created_at instead of lastAllocatedDate
-    reason: apiAsset.notes || apiAsset.reason  // Use notes field or dedicated reason field
+    createdAt: apiAsset.created_at,
+    reason: apiAsset.reason || apiAsset.notes // Make sure to get reason from API
   };
 }
 
@@ -606,6 +624,7 @@ onDepartmentChange(event: any): void {
       status: 'Available'
     });
     this.filteredEmployees = [];
+    this.allocationReason = '';
     this.showAssetModal = true;
 
     // Fetch next auto-increment asset id
@@ -652,6 +671,7 @@ setupStatusChangeListener(): void {
         this.assetForm.addControl('reason', new FormControl('', Validators.required));
       } else {
         reasonControl.setValidators(Validators.required);
+        reasonControl.updateValueAndValidity();
       }
     } else {
       // Remove validation and clear value for other statuses
@@ -660,6 +680,8 @@ setupStatusChangeListener(): void {
         reasonControl.setValue('');
         reasonControl.updateValueAndValidity();
       }
+      // Also clear the component property
+      this.allocationReason = '';
     }
   });
 }
@@ -674,6 +696,7 @@ setupStatusChangeListener(): void {
     this.assetForm.patchValue({
       assetId: asset.assetId,
       serialNumber: asset.serialNumber,
+      
       name: asset.name,
       type: asset.type,
       brand: asset.brand,
@@ -701,78 +724,124 @@ setupStatusChangeListener(): void {
     this.editingAsset = null;
     this.assetForm.reset();
     this.filteredEmployees = [];
+    this.allocationReason = '';
   }
 
   // Submit Asset Form
-  onAssetSubmit(): void {
-    if (this.assetForm.valid) {
-      const formValue = this.assetForm.value;
-      
-      // In your onAssetSubmit() method, modify the payload creation:
-const apiPayload = this.mapAssetToAPI(formValue);
-(apiPayload as any).asset_id = formValue.assetId || this.nextAssetId;
-(apiPayload as any).serial_number = formValue.serialNumber;
+ 
+onAssetSubmit(): void {
+  const formValue = this.assetForm.value;
+  const status = formValue.status;
+  
+  // Manual validation for reason field
+  if ((status === 'Maintenance' || status === 'Retired') && !this.allocationReason?.trim()) {
+    alert('Please provide a reason for Maintenance or Retired status.');
+    return;
+  }
 
-// Only include reason for Maintenance or Retired status
-if ((formValue.status === 'Maintenance' || formValue.status === 'Retired') && this.allocationReason) {
-  (apiPayload as any).notes = this.allocationReason;
+  // Remove reason from form validation check
+  const formWithoutReason = { ...this.assetForm.controls };
+  // delete formWithoutReason.reason; // Remove reason from validation
+  
+  // Check if main form fields are valid (excluding reason)
+  const mainFormValid = Object.keys(formWithoutReason).every(key => 
+    this.assetForm.get(key)?.valid || this.assetForm.get(key)?.disabled
+  );
+
+  if (mainFormValid) {
+    // Create the API payload with correct field mapping
+    const apiPayload: any = {
+      asset_id: formValue.assetId || this.nextAssetId,
+      serial_number: formValue.serialNumber,
+      name: formValue.name,
+      type: formValue.type,
+      brand: formValue.brand,
+      model: formValue.model,
+      status: formValue.status,
+      allocated_to: formValue.allocatedTo || null,
+      vendor: formValue.vendor,
+      vendor_email: formValue.vendorEmail,
+      vendor_contact: formValue.vendorContact,
+      warranty_expiry: formValue.warrantyExpiry || null,
+      purchase_date: formValue.purchaseDate || null,
+      purchase_cost: formValue.purchaseCost || null
+    };
+
+    // Add reason field when needed
+    if ((status === 'Maintenance' || status === 'Retired') && this.allocationReason?.trim()) {
+      apiPayload.reason = this.allocationReason.trim();
+    }
+    
+    // Convert empty strings to null for optional fields
+    Object.keys(apiPayload).forEach(key => {
+      if (apiPayload[key] === '') {
+        apiPayload[key] = null;
+      }
+    });
+    
+    if (this.editingAsset) {
+      // Update existing asset
+      this.http.put(`http://localhost:3000/api/assets/${this.editingAsset.assetId}`, apiPayload)
+        .subscribe({
+          next: (response: any) => {
+            console.log('Update response:', response);
+            if (response.success) {
+              this.loadAssets();
+              this.closeAddAssetModal();
+              alert('Asset updated successfully!');
+            } else {
+              console.error('Update failed:', response);
+              alert('Failed to update asset. Please try again.');
+            }
+          },
+          error: (error) => {
+            console.error('Error updating asset:', error);
+            alert('Error updating asset. Please try again.');
+          }
+        });
+    } else {
+      // Create new asset
+      console.log('Creating asset with payload:', apiPayload);
+      this.http.post('http://localhost:3000/api/assets', apiPayload)
+        .subscribe({
+          next: (response: any) => {
+            console.log('Asset creation response:', response);
+            if (response.success) {
+              this.loadAssets();
+              this.closeAddAssetModal();
+              alert('Asset added successfully!');
+              this.nextAssetId = null;
+              this.allocationReason = '';
+            } else {
+              console.error('Creation failed:', response);
+              alert(`Failed to add asset: ${response.message || 'Please try again.'}`);
+            }
+          },
+          error: (error) => {
+            console.error('Error creating asset:', error);
+            const errorMessage = error.error?.message || error.message || 'Unknown error occurred';
+            alert(`Error creating asset: ${errorMessage}`);
+          }
+        });
+    }
+  } else {
+    // Mark all main fields as touched to show validation errors
+    Object.keys(formWithoutReason).forEach(key => {
+      this.assetForm.get(key)?.markAsTouched();
+    });
+    
+    const invalidFields = Object.keys(formWithoutReason)
+      .filter(key => this.assetForm.get(key)?.invalid)
+      .join(', ');
+    
+    alert(`Please fill all required fields correctly. Invalid fields: ${invalidFields}`);
+  }
 }
 
-      
-      // Convert empty strings to null for optional fields
-      Object.keys(apiPayload).forEach(key => {
-        if (apiPayload[key] === '') {
-          apiPayload[key] = null;
-        }
-      });
-      
-      if (this.editingAsset) {
-        // Update existing asset
-        this.http.put(`http://localhost:3000/api/assets/${this.editingAsset.assetId}`, apiPayload)
-          .subscribe({
-            next: (response: any) => {
-              if (response.success) {
-                this.loadAssets(); // Reload to get fresh data
-                this.closeAddAssetModal();
-                alert('Asset updated successfully!');
-              } else {
-                alert('Failed to update asset. Please try again.');
-              }
-            },
-            error: (error) => {
-              console.error('Error updating asset:', error);
-              alert('Error updating asset. Please try again.');
-            }
-          });
-      } else {
-        // Create new asset
-        this.http.post('http://localhost:3000/api/assets', apiPayload)
-          .subscribe({
-            next: (response: any) => {
-              console.log('Asset creation response:', response);
-              if (response.success) {
-                this.loadAssets(); // Reload to get fresh data including the new asset
-                this.closeAddAssetModal();
-                alert('Asset added successfully!');
-                this.nextAssetId = null;
-              } else {
-                alert('Failed to add asset. Please try again.');
-              }
-            },
-            error: (error) => {
-              console.error('Error creating asset:', error);
-              alert('Error creating asset. Please try again.');
-            }
-          });
-      }
-    } else {
-      // Mark all fields as touched to show validation errors
-      Object.keys(this.assetForm.controls).forEach(key => {
-        this.assetForm.get(key)?.markAsTouched();
-      });
-      alert('Please fill all required fields correctly.');
-    }
-  }
+// Also, make sure your form initialization includes all required fields
+// Update your constructor or ngOnInit to ensure proper form setup:
+
+
 
   // Delete Asset
   deleteAsset(asset: Asset): void {
