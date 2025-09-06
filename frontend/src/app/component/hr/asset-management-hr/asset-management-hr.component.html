@@ -24,7 +24,7 @@
         <button (click)="activeSection = 'vendors'" 
                 [ngClass]="{ 'bg-indigo-100 text-indigo-700': activeSection==='vendors' }"
                 class="w-full text-left px-4 py-2 rounded-lg hover:bg-indigo-50 transition">
-          Vendors
+          Vendor Details
         </button>
         <button (click)="activeSection = 'assets'" 
                 [ngClass]="{ 'bg-indigo-100 text-indigo-700': activeSection==='assets' }"
@@ -56,7 +56,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
-              <h3 class="font-bold text-xl text-gray-800">Vendors</h3>
+              <h3 class="font-bold text-xl text-gray-800">Vendor Details</h3>
             </div>
             
             <button (click)="openAddVendorModal()" class="mb-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
@@ -187,14 +187,13 @@
                   </ng-container>
 
                   <ng-container matColumnDef="assetId">
-  <th mat-header-cell *matHeaderCellDef mat-sort-header> Asset ID </th>
-  <td mat-cell *matCellDef="let element"> {{element.assetId}} </td>
-</ng-container>
-                  
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Asset ID </th>
+                    <td mat-cell *matCellDef="let element"> {{element.assetId}} </td>
+                  </ng-container>
                   
                   <!-- Name Column -->
                   <ng-container matColumnDef="name">
-                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Name </th>
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Product Name </th>
                     <td mat-cell *matCellDef="let element"> {{element.name}} </td>
                   </ng-container>
                   
@@ -259,21 +258,20 @@
                   </ng-container>
 
                   <!-- Date Allocated Column -->
-              <!-- Update the Warranty Expiry column to use created_at -->
-<ng-container matColumnDef="createdAt">
-  <th mat-header-cell *matHeaderCellDef mat-sort-header> Date Allocated </th>
-  <td mat-cell *matCellDef="let element"> 
-    {{element.createdAt | date:'shortDate'}} 
-  </td>
-</ng-container>
+                  <ng-container matColumnDef="createdAt">
+                    <th mat-header-cell *matHeaderCellDef mat-sort-header> Date Allocated </th>
+                    <td mat-cell *matCellDef="let element"> 
+                      {{element.createdAt | date:'shortDate'}} 
+                    </td>
+                  </ng-container>
 
-<!-- Add a new Reason column -->
-<ng-container matColumnDef="reason">
-  <th mat-header-cell *matHeaderCellDef> Reason </th>
-  <td mat-cell *matCellDef="let element"> 
-    {{element.reason || '—'}}
-  </td>
-</ng-container>
+                  <!-- Reason Column -->
+                  <ng-container matColumnDef="reason">
+                    <th mat-header-cell *matHeaderCellDef> Reason </th>
+                    <td mat-cell *matCellDef="let element"> 
+                      {{element.reason || '—'}}
+                    </td>
+                  </ng-container>
                   
                   <!-- Actions Column -->
                   <ng-container matColumnDef="actions">
@@ -313,7 +311,7 @@
           </div>
         </section>
 
-        <!-- Ticket Management -->
+        <!-- Ticket Management Section (Updated) -->
         <section *ngIf="activeSection === 'tickets'" class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
           <div class="h-2 bg-indigo-600"></div>
           <div class="p-6">
@@ -326,41 +324,92 @@
               <h3 class="font-bold text-xl text-gray-800">Ticket Management</h3>
             </div>
             
-            <div class="grid grid-cols-3 gap-4 mb-6">
-              <div class="bg-blue-100 text-blue-800 p-4 rounded-lg shadow-sm">
+            <!-- Ticket Statistics Cards with Click Handlers -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+              <div class="bg-blue-100 text-blue-800 p-4 rounded-lg shadow-sm cursor-pointer hover:bg-blue-200 transition-colors"
+                   (click)="filterTicketsByStatus('active')">
                 <div class="text-2xl font-bold">{{ activeTickets }}</div>
-                <div>Active Tickets</div>
+                <div class="text-sm">Active Tickets</div>
               </div>
-              <div class="bg-green-100 text-green-800 p-4 rounded-lg shadow-sm">
+              <div class="bg-green-100 text-green-800 p-4 rounded-lg shadow-sm cursor-pointer hover:bg-green-200 transition-colors"
+                   (click)="filterTicketsByStatus('closed')">
                 <div class="text-2xl font-bold">{{ closedTickets }}</div>
-                <div>Closed Tickets</div>
+                <div class="text-sm">Closed Tickets</div>
               </div>
-              <div class="bg-amber-100 text-amber-800 p-4 rounded-lg shadow-sm">
-                <div class="text-2xl font-bold">{{ pendingTickets }}</div>
-                <div>Pending Tickets</div>
+              <div class="bg-amber-100 text-amber-800 p-4 rounded-lg shadow-sm cursor-pointer hover:bg-amber-200 transition-colors"
+                   (click)="filterTicketsByStatus('under-review')">
+                <div class="text-2xl font-bold">{{ underReviewTickets }}</div>
+                <div class="text-sm">Under Review</div>
+              </div>
+              <div class="bg-red-100 text-red-800 p-4 rounded-lg shadow-sm cursor-pointer hover:bg-red-200 transition-colors"
+                   (click)="filterTicketsByStatus('escalated')">
+                <div class="text-2xl font-bold">{{ escalatedTickets }}</div>
+                <div class="text-sm">Escalated Tickets</div>
+              </div>
+              <div class="bg-purple-100 text-purple-800 p-4 rounded-lg shadow-sm cursor-pointer hover:bg-purple-200 transition-colors"
+                   (click)="loadTickets('all')">
+                <div class="text-2xl font-bold">{{ totalTickets }}</div>
+                <div class="text-sm">All Tickets</div>
               </div>
             </div>
             
+            <!-- Loading Indicator -->
+            <div *ngIf="isLoadingTickets" class="flex justify-center items-center py-8">
+              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+              <span class="ml-2 text-gray-600">Loading tickets...</span>
+            </div>
+            
             <!-- Material Table for Tickets -->
-            <div class="mat-elevation overflow-x-auto">
+            <div class="mat-elevation overflow-x-auto" *ngIf="!isLoadingTickets">
               <table mat-table [dataSource]="ticketDataSource" class="w-full">
                 
                 <!-- Ticket ID Column -->
-                <ng-container matColumnDef="id">
+                <ng-container matColumnDef="ticket_id">
                   <th mat-header-cell *matHeaderCellDef> Ticket ID </th>
-                  <td mat-cell *matCellDef="let element"> #{{element.id}} </td>
+                  <td mat-cell *matCellDef="let element"> 
+                    <span class="font-medium text-indigo-600">{{ element.ticket_id }}</span>
+                  </td>
                 </ng-container>
 
                 <!-- Employee ID Column -->
-                <ng-container matColumnDef="employeeId">
+                <ng-container matColumnDef="employee_id">
                   <th mat-header-cell *matHeaderCellDef> Employee ID </th>
-                  <td mat-cell *matCellDef="let element"> {{element.employeeId || '—'}} </td>
+                  <td mat-cell *matCellDef="let element"> 
+                    <span class="text-sm font-medium">{{ element.employee_id || '—' }}</span>
+                  </td>
                 </ng-container>
                 
-                <!-- Employee Column -->
-                <ng-container matColumnDef="employee">
+                <!-- Employee Name Column -->
+                <ng-container matColumnDef="employee_name">
                   <th mat-header-cell *matHeaderCellDef> Employee </th>
-                  <td mat-cell *matCellDef="let element"> {{element.employee}} </td>
+                  <td mat-cell *matCellDef="let element"> 
+                    <div>
+                      <div class="font-medium">{{ element.employee_name || 'Unknown' }}</div>
+                      <div class="text-xs text-gray-500">{{ element.reported_by }}</div>
+                    </div>
+                  </td>
+                </ng-container>
+
+                <!-- Asset ID Column -->
+                <ng-container matColumnDef="asset_id">
+                  <th mat-header-cell *matHeaderCellDef> Asset ID </th>
+                  <td mat-cell *matCellDef="let element"> 
+                    <div>
+                      <div class="font-medium">{{ element.asset_id }}</div>
+                      <div class="text-xs text-gray-500" *ngIf="element.asset_model">{{ element.asset_model }}</div>
+                    </div>
+                  </td>
+                </ng-container>
+
+                <!-- Asset Model Column -->
+                <ng-container matColumnDef="asset_model">
+                  <th mat-header-cell *matHeaderCellDef> Asset Model </th>
+                  <td mat-cell *matCellDef="let element"> 
+                    <div>
+                      <div class="font-medium">{{ element.asset_name || element.asset_model || '—' }}</div>
+                      <div class="text-xs text-gray-500" *ngIf="element.asset_model && element.asset_name">{{ element.asset_model }}</div>
+                    </div>
+                  </td>
                 </ng-container>
                 
                 <!-- Status Column -->
@@ -370,18 +419,39 @@
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                       [ngClass]="{
                         'bg-blue-100 text-blue-800': element.status === 'Open',
-                        'bg-amber-100 text-amber-800': element.status === 'Pending',
-                        'bg-green-100 text-green-800': element.status === 'Closed'
+                        'bg-amber-100 text-amber-800': element.status === 'Under Review',
+                        'bg-green-100 text-green-800': element.status === 'Closed',
+                        'bg-red-100 text-red-800': element.status === 'Escalated'
                       }">
                       {{ element.status }}
                     </span>
                   </td>
                 </ng-container>
+
+                <!-- Priority Column -->
+                <ng-container matColumnDef="priority">
+                  <th mat-header-cell *matHeaderCellDef> Priority </th>
+                  <td mat-cell *matCellDef="let element">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                      [ngClass]="{
+                        'bg-green-100 text-green-800': element.priority === 'Low',
+                        'bg-yellow-100 text-yellow-800': element.priority === 'Medium',
+                        'bg-red-100 text-red-800': element.priority === 'High'
+                      }">
+                      {{ element.priority }}
+                    </span>
+                  </td>
+                </ng-container>
                 
-                <!-- Issue Column -->
-                <ng-container matColumnDef="issue">
+                <!-- Issue Description Column -->
+                <ng-container matColumnDef="issue_description">
                   <th mat-header-cell *matHeaderCellDef> Issue </th>
-                  <td mat-cell *matCellDef="let element"> {{element.issue}} </td>
+                  <td mat-cell *matCellDef="let element"> 
+                    <div class="max-w-xs">
+                      <p class="text-sm truncate" [title]="element.issue_description">{{ element.issue_description }}</p>
+                      <p class="text-xs text-gray-500">{{ element.created_at | date:'short' }}</p>
+                    </div>
+                  </td>
                 </ng-container>
                 
                 <!-- Evidence Column -->
@@ -390,13 +460,23 @@
                   <td mat-cell *matCellDef="let element">
                     <div *ngIf="element.evidence && element.evidence.length > 0" class="flex space-x-2">
                       <ng-container *ngFor="let evidence of element.evidence">
-                        <img *ngIf="evidence.type === 'image'" [src]="evidence.url" alt="Issue evidence" class="h-10 w-10 object-cover rounded cursor-pointer" (click)="openEvidenceModal(evidence)">
-                        <video *ngIf="evidence.type === 'video'" class="h-10 w-10 object-cover rounded cursor-pointer" (click)="openEvidenceModal(evidence)">
-                          <source [src]="evidence.url" type="video/mp4">
-                        </video>
+                        <img *ngIf="evidence.type === 'image'" [src]="evidence.url" alt="Issue evidence" 
+                             class="h-10 w-10 object-cover rounded cursor-pointer hover:opacity-75 transition-opacity" 
+                             (click)="openEvidenceModal(evidence)">
+                        <div *ngIf="evidence.type === 'video'" class="relative">
+                          <video class="h-10 w-10 object-cover rounded cursor-pointer hover:opacity-75 transition-opacity" 
+                                 (click)="openEvidenceModal(evidence)">
+                            <source [src]="evidence.url" type="video/mp4">
+                          </video>
+                          <div class="absolute inset-0 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                            </svg>
+                          </div>
+                        </div>
                       </ng-container>
                     </div>
-                    <span *ngIf="!element.evidence || element.evidence.length === 0">—</span>
+                    <span *ngIf="!element.evidence || element.evidence.length === 0" class="text-gray-400 text-sm">No evidence</span>
                   </td>
                 </ng-container>
                 
@@ -418,6 +498,21 @@
                 
                 <tr mat-header-row *matHeaderRowDef="ticketDisplayedColumns"></tr>
                 <tr mat-row *matRowDef="let row; columns: ticketDisplayedColumns;"></tr>
+                
+                <!-- No Data Row -->
+                <tr class="mat-row" *matNoDataRow>
+                  <td class="mat-cell py-8 text-center" [attr.colspan]="ticketDisplayedColumns.length">
+                    <div class="flex flex-col items-center justify-center">
+                      <svg class="w-12 h-12 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                      </svg>
+                      <p class="text-gray-500">No tickets found</p>
+                      <p class="text-gray-400 text-sm">
+                        {{ currentTicketFilter === 'all' ? 'No tickets have been raised yet.' : 'No tickets found for the selected filter.' }}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
               </table>
               
               <mat-paginator [pageSizeOptions]="[5, 10, 20]" showFirstLastButtons></mat-paginator>
@@ -609,32 +704,32 @@
           </div>
           <div class="md:col-span-2">
            <label class="block text-sm font-medium text-gray-700 mb-1">Allocate To</label>
-  <div class="grid grid-cols-2 gap-4">
-    <!-- Department Dropdown -->
-    <select (change)="onDepartmentChange($event)" 
-            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-      <option value="">Select Department</option>
-      <option *ngFor="let dept of departmentOptions" [value]="dept.grp_id">
-        {{ getDepartmentName(dept.grp_id) }}
-      </option>
-    </select>
-    
-    <!-- Employee Dropdown -->
-    <select formControlName="allocatedTo" 
-            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-      <option value="">Select Employee</option>
-      <option *ngFor="let emp of filteredEmployees" [value]="emp.employee_id">
-        {{ emp.name }} ({{ emp.employee_id }})
-      </option>
-    </select>
+            <div class="grid grid-cols-2 gap-4">
+              <!-- Department Dropdown -->
+              <select (change)="onDepartmentChange($event)" 
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="">Select Department</option>
+                <option *ngFor="let dept of departmentOptions" [value]="dept.grp_id">
+                  {{ getDepartmentName(dept.grp_id) }}
+                </option>
+              </select>
+              
+              <!-- Employee Dropdown -->
+              <select formControlName="allocatedTo" 
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <option value="">Select Employee</option>
+                <option *ngFor="let emp of filteredEmployees" [value]="emp.employee_id">
+                  {{ emp.name }} ({{ emp.employee_id }})
+                </option>
+              </select>
             </div>
-          <!-- Replace the current allocation reason section with this conditional version -->
-<div class="mt-4" *ngIf="assetForm.get('status')?.value === 'Maintenance' || assetForm.get('status')?.value === 'Retired'">
-  <label class="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-  <textarea rows="2" [(ngModel)]="allocationReason" [ngModelOptions]="{standalone: true}"
-            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Enter reason for maintenance or retirement"></textarea>
-</div>
+            <!-- Replace the current allocation reason section with this conditional version -->
+            <div class="mt-4" *ngIf="assetForm.get('status')?.value === 'Maintenance' || assetForm.get('status')?.value === 'Retired'">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+              <textarea rows="2" [(ngModel)]="allocationReason" [ngModelOptions]="{standalone: true}"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Enter reason for maintenance or retirement"></textarea>
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
@@ -667,80 +762,165 @@
   </div>
 </div>
 
-<!-- Ticket Action Modal -->
+<!-- Updated Ticket Action Modal -->
 <div *ngIf="selectedTicket" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-  <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl">
-    <div class="flex justify-between items-center p-4 border-b">
-      <h3 class="text-lg font-semibold">Ticket Action - #{{selectedTicket.id}}</h3>
+  <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-screen overflow-auto">
+    <div class="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
+      <h3 class="text-lg font-semibold">Ticket Action - {{ selectedTicket.ticket_id }}</h3>
       <button (click)="selectedTicket = null" class="text-gray-400 hover:text-gray-600">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
       </button>
     </div>
-    <div class="p-4">
-      <div class="mb-4 grid grid-cols-2 gap-4">
-        <div>
-          <p class="font-medium">Employee: {{selectedTicket.employee}} <span class="text-xs text-gray-500" *ngIf="selectedTicket.employeeId">({{selectedTicket.employeeId}})</span></p>
-          <p class="text-sm text-gray-600 mt-1">Issue: {{selectedTicket.issue}}</p>
+    <div class="p-6">
+      <!-- Ticket Information -->
+      <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="space-y-4">
+          <div>
+            <label class="text-sm font-medium text-gray-700">Employee Details</label>
+            <div class="mt-1">
+              <p class="font-medium">{{ selectedTicket.employee_name || 'Unknown' }}</p>
+              <p class="text-sm text-gray-600">{{ selectedTicket.reported_by }}</p>
+              <p class="text-sm text-gray-500" *ngIf="selectedTicket.employee_id">ID: {{ selectedTicket.employee_id }}</p>
+            </div>
+          </div>
+          
+          <div>
+            <label class="text-sm font-medium text-gray-700">Asset Details</label>
+            <div class="mt-1">
+              <p class="font-medium">{{ selectedTicket.asset_id }}</p>
+              <p class="text-sm text-gray-600" *ngIf="selectedTicket.asset_name">{{ selectedTicket.asset_name }}</p>
+              <p class="text-sm text-gray-500" *ngIf="selectedTicket.asset_model">{{ selectedTicket.asset_model }}</p>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm font-medium text-gray-700">Issue Description</label>
+            <div class="mt-1 p-3 bg-gray-50 rounded-md">
+              <p class="text-sm">{{ selectedTicket.issue_description }}</p>
+              <p class="text-xs text-gray-500 mt-2">
+                Reported on: {{ selectedTicket.created_at | date:'medium' }}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-sm font-medium text-gray-700">Priority</label>
+            <div class="mt-1">
+              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                [ngClass]="{
+                  'bg-green-100 text-green-800': selectedTicket.priority === 'Low',
+                  'bg-yellow-100 text-yellow-800': selectedTicket.priority === 'Medium',
+                  'bg-red-100 text-red-800': selectedTicket.priority === 'High'
+                }">
+                {{ selectedTicket.priority }}
+              </span>
+            </div>
+          </div>
         </div>
+        
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <select [(ngModel)]="selectedTicket.status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Update Status</label>
+          <select [(ngModel)]="selectedTicket.status" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <option value="Open">Open</option>
-            <option value="Pending">Pending</option>
+            <option value="Under Review">Under Review</option>
+            <option value="Escalated">Escalated</option>
             <option value="Closed">Closed</option>
           </select>
         </div>
       </div>
       
       <!-- Evidence Section -->
-      <div *ngIf="selectedTicket.evidence && selectedTicket.evidence.length > 0" class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Evidence Provided by Employee</label>
-        <div class="flex flex-wrap gap-2">
-          <div *ngFor="let evidence of selectedTicket.evidence" class="relative">
-            <img *ngIf="evidence.type === 'image'" [src]="evidence.url" alt="Issue evidence" class="h-20 w-20 object-cover rounded cursor-pointer" (click)="openEvidenceModal(evidence)">
-            <video *ngIf="evidence.type === 'video'" class="h-20 w-20 object-cover rounded cursor-pointer" (click)="openEvidenceModal(evidence)">
-              <source [src]="evidence.url" type="video/mp4">
-            </video>
+      <div *ngIf="selectedTicket.evidence && selectedTicket.evidence.length > 0" class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-3">Evidence Provided by Employee</label>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+          <div *ngFor="let evidence of selectedTicket.evidence" class="relative group">
+            <div class="aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:opacity-75 transition-opacity"
+                 (click)="openEvidenceModal(evidence)">
+              <img *ngIf="evidence.type === 'image'" 
+                   [src]="evidence.url" 
+                   alt="Issue evidence" 
+                   class="w-full h-full object-cover">
+              <div *ngIf="evidence.type === 'video'" class="w-full h-full flex items-center justify-center bg-gray-200">
+                <svg class="w-8 h-8 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                </svg>
+              </div>
+            </div>
+            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-20 rounded-lg">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+              </svg>
+            </div>
           </div>
         </div>
       </div>
       
       <!-- Request More Information -->
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">Request More Information</label>
-        <textarea rows="2" [(ngModel)]="informationRequest" placeholder="Ask the employee for more details about the issue..." class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Request More Information</label>
+        <textarea rows="3" 
+                  [(ngModel)]="informationRequest" 
+                  placeholder="Ask the employee for more details about the issue..."
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
       </div>
       
-      <!-- Response Section -->
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1">Your Response</label>
-        <textarea rows="4" [(ngModel)]="ticketResponse" placeholder="Type your response or action here..." class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+      <!-- HR Response Section -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Your Response / Action Taken</label>
+        <textarea rows="4" 
+                  [(ngModel)]="ticketResponse" 
+                  placeholder="Describe the action taken or provide guidance to the employee..."
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
       </div>
+
+    <!-- Previous HR Response (if exists) -->
+<div *ngIf="selectedTicket.resolution_notes" class="mb-6">
+  <label class="block text-sm font-medium text-gray-700 mb-2">Previous Response</label>
+  <div class="p-4 bg-blue-50 border border-blue-200 rounded-md">
+    <p class="text-sm text-blue-800">{{ selectedTicket.resolution_notes }}</p>
+    <p class="text-xs text-blue-600 mt-2" *ngIf="selectedTicket.updated_at">
+      Responded on: {{ selectedTicket.updated_at | date:'medium' }}
+    </p>
+  </div>
+</div>
       
-      <div class="flex justify-end space-x-2 mt-6">
-        <button (click)="selectedTicket = null" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-        <button (click)="submitTicketAction()" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Submit</button>
+      <div class="flex justify-end space-x-3 pt-4 border-t">
+        <button (click)="selectedTicket = null" 
+                class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors">
+          Cancel
+        </button>
+        <button (click)="submitTicketAction()" 
+                class="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
+          Submit Action
+        </button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Evidence Modal -->
-<div *ngIf="selectedEvidence" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-  <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-screen overflow-auto">
-    <div class="flex justify-between items-center p-4 border-b">
-      <h3 class="text-lg font-semibold">Evidence View</h3>
-      <button (click)="selectedEvidence = null" class="text-gray-400 hover:text-gray-600">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<!-- Enhanced Evidence Modal -->
+<div *ngIf="selectedEvidence" class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+  <div class="relative max-w-5xl w-full max-h-screen">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-lg font-semibold text-white">Evidence View</h3>
+      <button (click)="selectedEvidence = null" class="text-white hover:text-gray-300 transition-colors">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
       </button>
     </div>
-    <div class="p-4 flex justify-center">
-      <img *ngIf="selectedEvidence.type === 'image'" [src]="selectedEvidence.url" alt="Issue evidence" class="max-w-full max-h-96 object-contain">
-      <video *ngIf="selectedEvidence.type === 'video'" controls class="max-w-full max-h-96">
+    <div class="bg-white rounded-lg p-4 flex justify-center items-center max-h-full overflow-auto">
+      <img *ngIf="selectedEvidence.type === 'image'" 
+           [src]="selectedEvidence.url" 
+           alt="Issue evidence" 
+           class="max-w-full max-h-96 object-contain rounded">
+      <video *ngIf="selectedEvidence.type === 'video'" 
+             controls 
+             class="max-w-full max-h-96 rounded">
         <source [src]="selectedEvidence.url" type="video/mp4">
         Your browser does not support the video tag.
       </video>

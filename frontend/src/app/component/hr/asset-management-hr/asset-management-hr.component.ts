@@ -11,9 +11,9 @@ import { MatMenuTrigger } from '@angular/material/menu';
 interface Evidence {
   type: 'image' | 'video';
   url: string;
-}
-
-
+  file_path?: string;
+  file_type?: string;
+}   
 
 interface ActivityLog {
   timestamp: Date;
@@ -40,7 +40,7 @@ interface DateGroup {
 export interface Asset {
   id?: number;
   assetId?: string;
-  serialNumber: string;  // Changed from assetId to serialNumber
+  serialNumber: string;
   name: string;
   type: string;
   brand: string;
@@ -60,7 +60,7 @@ export interface Asset {
 export interface Vendor {
   id?: number;
   name: string;
-  contactPerson: string;  // Changed from contact to contactPerson
+  contactPerson: string;
   email: string;
   phone?: string;
   address?: string;
@@ -78,11 +78,20 @@ export interface AssetResponse {
 }
 
 interface Ticket {
-  id: string;
-  employeeId?: string;
-  employee: string;
+  ticket_id: string;
+  asset_id: string;
+  reported_by: string;
+  issue_description: string;
   status: string;
-  issue: string;
+  priority: string;
+  created_at: string;
+  assigned_to?: string;
+  resolution_notes?: string;
+  updated_at?: string;
+  asset_model?: string;
+  asset_name?: string;
+  employee_name?: string;
+  employee_id?: string;
   evidence: Evidence[];
 }
 
@@ -101,10 +110,12 @@ export class AssetManagementComponent implements OnInit {
   isSidebarMinimized = false;
   currentDate = new Date();
   activeSection = 'assets';
+  
   getDepartmentName(grpId: number): string {
-  const department = this.departmentOptions.find(dept => dept.grp_id === grpId);
-  return department ? department.name : 'Unknown Department';
-}
+    const department = this.departmentOptions.find(dept => dept.grp_id === grpId);
+    return department ? department.name : 'Unknown Department';
+  }
+  
   // Vendor Management
   vendorList: Vendor[] = [];
   vendorDataSource: MatTableDataSource<Vendor>;
@@ -122,12 +133,11 @@ export class AssetManagementComponent implements OnInit {
   nextAssetId: string | null = null;
   assetDataSource: MatTableDataSource<Asset>;
 
-assetDisplayedColumns: string[] = [
-  'assetId', 'serialNumber', 'name', 'type', 'brandModel', 'status', 
-  'allocatedTo', 'vendor', 'vendorContact', 'warrantyExpiry', 
-  'createdAt', 'reason', 'actions' 
-];
-  // We'll show reason in a tooltip in the table UI
+  assetDisplayedColumns: string[] = [
+    'assetId', 'serialNumber', 'name', 'type', 'brandModel', 'status', 
+    'allocatedTo', 'vendor', 'vendorContact', 'warrantyExpiry', 
+    'createdAt', 'reason', 'actions' 
+  ];
   
   // Filter Controls
   searchControl = new FormControl('');
@@ -136,13 +146,13 @@ assetDisplayedColumns: string[] = [
   brandControl = new FormControl('');
   vendorControl = new FormControl('');
   
-  // Filter Options - Include empty option at the beginning
+  // Filter Options
   statusOptions: string[] = ['', 'Available', 'Allocated', 'Maintenance', 'Retired'];
   typeOptions: string[] = ['', 'Laptop', 'Monitor', 'Keyboard', 'Mouse', 'Desktop', 'Printer', 'Server', 'Tablet'];
   brandOptions: string[] = ['', 'Dell', 'HP', 'Apple', 'Lenovo', 'Samsung', 'Acer', 'Asus', 'Microsoft'];
   vendorOptions: string[] = [''];
   
-  // Department and Employee Options (from API)
+  // Department and Employee Options
   departmentOptions: { grp_id: number; name: string }[] = [];
   filteredEmployees: { employee_id: string; name: string; grp_id: number }[] = [];
   
@@ -153,54 +163,26 @@ assetDisplayedColumns: string[] = [
   pageSize = 10;
   isLoading = false;
 
-  // Ticket Management
-  activeTickets = 0;
-  closedTickets = 0;
-  pendingTickets = 0;
-  ticketList: Ticket[] = [
-    { 
-      id: '1001', 
-      employee: 'Raj Sharma', 
-      status: 'Open', 
-      issue: 'Laptop not turning on',
-      evidence: [
-        { type: 'image', url: 'https://example.com/image1.jpg' },
-        { type: 'video', url: 'https://example.com/video1.mp4' }
-      ]
-    },
-    { 
-      id: '1002', 
-      employeeId: 'EMP-102',
-      employee: 'Priya Patel', 
-      status: 'Pending', 
-      issue: 'Monitor flickering',
-      evidence: [
-        { type: 'image', url: 'https://example.com/image2.jpg' }
-      ]
-    },
-    { 
-      id: '1003', 
-      employeeId: 'EMP-103',
-      employee: 'Amit Kumar', 
-      status: 'Open', 
-      issue: 'Keyboard not working',
-      evidence: []
-    },
-    { 
-      id: '1004', 
-      employeeId: 'EMP-104',
-      employee: 'Sneha Desai', 
-      status: 'Closed', 
-      issue: 'Software installation',
-      evidence: []
-    }
-  ];
+  // Ticket Management - Updated for real data
+  tickets: Ticket[] = [];
   ticketDataSource: MatTableDataSource<Ticket>;
-  ticketDisplayedColumns: string[] = ['id', 'employeeId', 'employee', 'status', 'issue', 'evidence', 'actions'];
+  ticketDisplayedColumns: string[] = ['ticket_id', 'employee_id', 'employee_name', 'asset_id', 'asset_model', 'status', 'priority', 'issue_description', 'evidence', 'actions'];
   selectedTicket: Ticket | null = null;
   ticketResponse = '';
   informationRequest = '';
   selectedEvidence: Evidence | null = null;
+  
+  // Ticket Statistics - Updated for real data
+  activeTickets = 0;
+  closedTickets = 0;
+  pendingTickets = 0;
+  escalatedTickets = 0;
+  underReviewTickets = 0;
+  totalTickets = 0;
+  
+  // Ticket Filtering
+  currentTicketFilter = 'all';
+  isLoadingTickets = false;
   
   // Activity Logs
   activityLogs: ActivityLog[] = [
@@ -258,66 +240,64 @@ assetDisplayedColumns: string[] = [
     private fb: FormBuilder,
     private http: HttpClient
   ) {
-    // Initialize vendor form with correct field names
+    // Initialize vendor form
     this.vendorForm = this.fb.group({
       name: ['', Validators.required],
-      contactPerson: ['', Validators.required],  // Changed from contact to contactPerson
+      contactPerson: ['', Validators.required],
       email: ['', [Validators.required, Validators.email]],
       phone: [''],
       address: ['']
     });
     
-    
-    // Initialize asset form with correct field names matching template
-this.assetForm = this.fb.group({
-  assetId: ['', Validators.required],
-  serialNumber: ['', Validators.required],
-  name: ['', Validators.required],
-  type: ['', Validators.required],
-  brand: ['', Validators.required],
-  model: ['', Validators.required],
-  status: ['Available', Validators.required],
-  allocatedTo: [''],
-  vendor: ['', Validators.required],
-  vendorEmail: ['', [Validators.required, Validators.email]],
-  vendorContact: ['', Validators.required],
-  warrantyExpiry: [''],
-  purchaseDate: [''],
-  purchaseCost: [''],
-  allocationReason: ['']
-});
+    // Initialize asset form
+    this.assetForm = this.fb.group({
+      assetId: ['', Validators.required],
+      serialNumber: ['', Validators.required],
+      name: ['', Validators.required],
+      type: ['', Validators.required],
+      brand: ['', Validators.required],
+      model: ['', Validators.required],
+      status: ['Available', Validators.required],
+      allocatedTo: [''],
+      vendor: ['', Validators.required],
+      vendorEmail: ['', [Validators.required, Validators.email]],
+      vendorContact: ['', Validators.required],
+      warrantyExpiry: [''],
+      purchaseDate: [''],
+      purchaseCost: ['']
+    });
     
     // Initialize data sources
     this.vendorDataSource = new MatTableDataSource(this.vendorList);
     this.assetDataSource = new MatTableDataSource(this.assets);
-    this.ticketDataSource = new MatTableDataSource(this.ticketList);
+    this.ticketDataSource = new MatTableDataSource(this.tickets);
   }
 
-ngOnInit(): void {
-  // Initialize asset form WITHOUT reason field
-  this.assetForm = this.fb.group({
-    assetId: ['', Validators.required],
-    serialNumber: ['', Validators.required],
-    name: ['', Validators.required],
-    type: ['', Validators.required],
-    brand: ['', Validators.required],
-    model: ['', Validators.required],
-    status: ['Available', Validators.required],
-    allocatedTo: [''],
-    vendor: ['', Validators.required],
-    vendorEmail: ['', [Validators.required, Validators.email]],
-    vendorContact: ['', Validators.required],
-    warrantyExpiry: [''],
-    purchaseDate: [''],
-    purchaseCost: ['']
-  });
+  ngOnInit(): void {
+    // Initialize asset form
+    this.assetForm = this.fb.group({
+      assetId: ['', Validators.required],
+      serialNumber: ['', Validators.required],
+      name: ['', Validators.required],
+      type: ['', Validators.required],
+      brand: ['', Validators.required],
+      model: ['', Validators.required],
+      status: ['Available', Validators.required],
+      allocatedTo: [''],
+      vendor: ['', Validators.required],
+      vendorEmail: ['', [Validators.required, Validators.email]],
+      vendorContact: ['', Validators.required],
+      warrantyExpiry: [''],
+      purchaseDate: [''],
+      purchaseCost: ['']
+    });
 
-  this.loadAssets();
-  this.loadVendors();
-  this.setupFilterSubscriptions();
-  // REMOVE THIS LINE: this.setupStatusChangeListener();
-  this.updateTicketCounts();
-}
+    this.loadAssets();
+    this.loadVendors();
+    this.loadTickets();
+    this.loadTicketStatistics();
+    this.setupFilterSubscriptions();
+  }
 
   ngAfterViewInit() {
     this.assetDataSource.sort = this.sort;
@@ -325,12 +305,10 @@ ngOnInit(): void {
     this.vendorDataSource.paginator = this.vendorPaginator;
     this.ticketDataSource.paginator = this.ticketPaginator;
     
-    // Set up custom filter predicate after view init
     this.setCustomFilterPredicate();
   }
 
   setupFilterSubscriptions(): void {
-    // Set up filter subscriptions
     this.searchControl.valueChanges
       .pipe(debounceTime(300), distinctUntilChanged())
       .subscribe(() => {
@@ -347,52 +325,212 @@ ngOnInit(): void {
     this.isSidebarMinimized = isMinimized;
   }
 
-  // ==================== ASSET MANAGEMENT FUNCTIONS ====================
+  // ==================== TICKET MANAGEMENT FUNCTIONS ====================
 
-  // Convert backend response to frontend format
- // Update the mapAssetFromAPI method to include createdAt and reason
-private mapAssetFromAPI(apiAsset: any): Asset {
-  return {
-    id: apiAsset.id,
-    assetId: apiAsset.asset_id,
-    serialNumber: apiAsset.serial_no, // Changed from serial_number to serial_no
-    name: apiAsset.name,
-    type: apiAsset.type,
-    brand: apiAsset.brand,
-    model: apiAsset.model,
-    status: apiAsset.status,
-    allocatedTo: apiAsset.allocated_to,
-    vendor: apiAsset.vendor,
-    vendorEmail: apiAsset.vendor_email,
-    vendorContact: apiAsset.vendor_contact,
-    warrantyExpiry: apiAsset.warranty_expiry,
-    purchaseDate: apiAsset.purchase_date,
-    purchaseCost: apiAsset.purchase_cost,
-    createdAt: apiAsset.created_at,
-    reason: apiAsset.reason || apiAsset.notes // Make sure to get reason from API
-  };
+  // Load tickets from API
+  loadTickets(status: string = 'all'): void {
+    this.isLoadingTickets = true;
+    this.currentTicketFilter = status;
+    
+    let params = new HttpParams();
+    if (status && status !== 'all') {
+      params = params.set('status', status);
+    }
+
+    this.http.get<{ success: boolean; data: Ticket[] }>('http://localhost:3000/api/hr/tickets', { params })
+      .subscribe({
+        next: (response) => {
+          if (response.success) {
+            this.tickets = response.data.map(ticket => ({
+              ...ticket,
+              evidence: ticket.evidence?.map(e => ({
+                type: e.file_type === 'video' ? 'video' : 'image',
+                url: `http://localhost:3000/uploads/${e.file_path}`,
+                file_path: e.file_path,
+                file_type: e.file_type
+              })) || []
+            }));
+            this.ticketDataSource.data = this.tickets;
+          } else {
+            console.error('Failed to load tickets');
+            this.tickets = [];
+            this.ticketDataSource.data = [];
+          }
+          this.isLoadingTickets = false;
+        },
+        error: (error) => {
+          console.error('Error loading tickets:', error);
+          this.tickets = [];
+          this.ticketDataSource.data = [];
+          this.isLoadingTickets = false;
+        }
+      });
+  }
+
+  // Load ticket statistics
+  loadTicketStatistics(): void {
+    this.http.get<{ success: boolean; data: any }>('http://localhost:3000/api/hr/ticket-stats')
+      .subscribe({
+        next: (response) => {
+          if (response.success) {
+            const stats = response.data;
+            this.activeTickets = stats.open || 0;
+            this.closedTickets = stats.closed || 0;
+            this.escalatedTickets = stats.escalated || 0;
+            this.underReviewTickets = stats['under review'] || 0;
+            this.pendingTickets = this.escalatedTickets + this.underReviewTickets;
+            this.totalTickets = stats.total || 0;
+          }
+        },
+        error: (error) => {
+          console.error('Error loading ticket statistics:', error);
+        }
+      });
+  }
+
+  // Filter tickets by status
+  filterTicketsByStatus(status: string): void {
+    this.activeSection = 'tickets';
+    
+    const statusMap: { [key: string]: string } = {
+      'active': 'Open',
+      'closed': 'Closed',
+      'escalated': 'Escalated',
+      'pending': 'Under Review',
+      'under-review': 'Under Review'
+    };
+    
+    const dbStatus = statusMap[status] || status;
+    this.loadTickets(dbStatus);
+  }
+
+  // Open ticket action modal
+openTicketAction(ticket: Ticket): void {
+  this.selectedTicket = { ...ticket };
+  this.ticketResponse = ticket.resolution_notes || '';
+  this.informationRequest = '';
 }
 
-  // Convert frontend format to backend format
-  private mapAssetToAPI(asset: Asset): any {
+  // Submit ticket action
+  submitTicketAction(): void {
+    if (!this.selectedTicket) return;
+
+    const updateData: any = {};
+    
+    if (this.selectedTicket.status) {
+      updateData.status = this.selectedTicket.status;
+    }
+    
+    if (this.ticketResponse && this.ticketResponse.trim()) {
+      updateData.hrResponse = this.ticketResponse.trim();
+    }
+    
+    if (this.informationRequest && this.informationRequest.trim()) {
+      updateData.informationRequest = this.informationRequest.trim();
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      alert('Please provide a response or update the status.');
+      return;
+    }
+
+    this.http.put(`http://localhost:3000/api/hr/tickets/${this.selectedTicket.ticket_id}`, updateData)
+      .subscribe({
+        next: (response: any) => {
+          if (response.success) {
+            const ticketIndex = this.tickets.findIndex(t => t.ticket_id === this.selectedTicket!.ticket_id);
+            if (ticketIndex !== -1) {
+              this.tickets[ticketIndex] = { ...this.tickets[ticketIndex], ...updateData };
+              this.ticketDataSource.data = [...this.tickets];
+            }
+            
+            this.loadTicketStatistics();
+            this.loadTickets(this.currentTicketFilter);
+            
+            this.addToActivityLogs(this.selectedTicket!, updateData);
+            
+            alert('Ticket updated successfully!');
+            this.selectedTicket = null;
+            this.ticketResponse = '';
+            this.informationRequest = '';
+          } else {
+            alert('Failed to update ticket. Please try again.');
+          }
+        },
+        error: (error) => {
+          console.error('Error updating ticket:', error);
+          alert('Error updating ticket. Please try again.');
+        }
+      });
+  }
+
+  // Add ticket action to activity logs
+  addToActivityLogs(ticket: Ticket, updateData: any): void {
+    const now = new Date();
+    
+    if (updateData.hrResponse) {
+      this.activityLogs.unshift({
+        timestamp: now,
+        message: `HR Response: ${updateData.hrResponse}`,
+        user: ticket.employee_name || ticket.reported_by,
+        device: ticket.asset_name || ticket.asset_id,
+        issueType: 'Ticket Update',
+        addedBy: 'HR'
+      });
+    }
+    
+    if (updateData.informationRequest) {
+      this.activityLogs.unshift({
+        timestamp: now,
+        message: `Information Request: ${updateData.informationRequest}`,
+        user: ticket.employee_name || ticket.reported_by,
+        device: ticket.asset_name || ticket.asset_id,
+        issueType: 'Information Request',
+        addedBy: 'HR'
+      });
+    }
+    
+    if (updateData.status) {
+      this.activityLogs.unshift({
+        timestamp: now,
+        message: `Status updated to: ${updateData.status}`,
+        user: ticket.employee_name || ticket.reported_by,
+        device: ticket.asset_name || ticket.asset_id,
+        issueType: 'Status Update',
+        addedBy: 'HR'
+      });
+    }
+  }
+
+  // Open evidence modal
+  openEvidenceModal(evidence: Evidence): void {
+    this.selectedEvidence = evidence;
+  }
+
+  // ==================== ASSET MANAGEMENT FUNCTIONS ====================
+
+  private mapAssetFromAPI(apiAsset: any): Asset {
     return {
-      serial_number: asset.serialNumber, // Changed to serial_number
-      name: asset.name,
-      type: asset.type,
-      brand: asset.brand,
-      model: asset.model,
-      status: asset.status,
-      allocated_to: asset.allocatedTo,
-      vendor: asset.vendor,
-      vendor_email: asset.vendorEmail,
-      vendor_contact: asset.vendorContact,
-      warranty_expiry: asset.warrantyExpiry,
-      purchase_date: asset.purchaseDate,
-      purchase_cost: asset.purchaseCost
+      id: apiAsset.id,
+      assetId: apiAsset.asset_id,
+      serialNumber: apiAsset.serial_no,
+      name: apiAsset.name,
+      type: apiAsset.type,
+      brand: apiAsset.brand,
+      model: apiAsset.model,
+      status: apiAsset.status,
+      allocatedTo: apiAsset.allocated_to,
+      vendor: apiAsset.vendor,
+      vendorEmail: apiAsset.vendor_email,
+      vendorContact: apiAsset.vendor_contact,
+      warrantyExpiry: apiAsset.warranty_expiry,
+      purchaseDate: apiAsset.purchase_date,
+      purchaseCost: apiAsset.purchase_cost,
+      createdAt: apiAsset.created_at,
+      reason: apiAsset.reason || apiAsset.notes
     };
   }
 
-  // Apply filters to the assets table
   applyFilters(): void {
     const search = this.searchControl.value?.toLowerCase() || '';
     const status = this.statusControl.value || '';
@@ -409,7 +547,6 @@ private mapAssetFromAPI(apiAsset: any): Asset {
     }
   }
 
-  // Custom filter predicate for multiple filters
   setCustomFilterPredicate() {
     this.assetDataSource.filterPredicate = (data: Asset, filter: string): boolean => {
       const filterObject = JSON.parse(filter);
@@ -433,27 +570,22 @@ private mapAssetFromAPI(apiAsset: any): Asset {
     };
   }
 
-  // Load assets from API
   loadAssets(): void {
     this.isLoading = true;
     
     this.http.get<any>('http://localhost:3000/api/assets')
       .subscribe({
         next: (response) => {
-          console.log('API Response:', response);
           if (response.success && response.data) {
-            // Map API response to frontend format
             this.assets = response.data.map((asset: any) => this.mapAssetFromAPI(asset));
             this.assetDataSource.data = this.assets;
             this.totalAssets = response.pagination?.total || this.assets.length;
             
-            // Apply filters after data is loaded
             setTimeout(() => {
               this.setCustomFilterPredicate();
               this.applyFilters();
             });
           } else {
-            console.error('Failed to load assets - Invalid response format');
             this.useDemoAssets();
           }
           this.isLoading = false;
@@ -466,7 +598,6 @@ private mapAssetFromAPI(apiAsset: any): Asset {
       });
   }
 
-  // Use demo assets if API fails
   useDemoAssets(): void {
     this.assets = [
       { 
@@ -494,19 +625,6 @@ private mapAssetFromAPI(apiAsset: any): Asset {
         vendorEmail: 'sales@hardwaresolutions.com', 
         vendorContact: 'Jane Smith', 
         warrantyExpiry: '2025-03-20' 
-      },
-      { 
-        serialNumber: 'SN003', 
-        name: 'ThinkPad', 
-        type: 'Laptop', 
-        brand: 'Lenovo', 
-        model: 'X1 Carbon', 
-        status: 'Maintenance', 
-        allocatedTo: 'Amit Kumar', 
-        vendor: 'IT Equipment Co.', 
-        vendorEmail: 'support@itequipment.com', 
-        vendorContact: 'Robert Johnson', 
-        warrantyExpiry: '2024-08-10' 
       }
     ];
     this.assetDataSource.data = this.assets;
@@ -518,13 +636,11 @@ private mapAssetFromAPI(apiAsset: any): Asset {
     });
   }
 
-  // Load vendors from API
   loadVendors(): void {
     this.http.get<{ success: boolean; data: any[] }>('http://localhost:3000/api/vendors')
       .subscribe({
         next: (response) => {
           if (response.success && response.data) {
-            // Map vendor data to match interface
             this.vendorList = response.data.map(vendor => ({
               id: vendor.id,
               name: vendor.name,
@@ -534,8 +650,6 @@ private mapAssetFromAPI(apiAsset: any): Asset {
               address: vendor.address
             }));
             this.vendorDataSource.data = this.vendorList;
-            
-            // Update vendor options for dropdowns
             this.vendorOptions = ['', ...this.vendorList.map(v => v.name)];
           } else {
             this.useDemoVendors();
@@ -548,7 +662,6 @@ private mapAssetFromAPI(apiAsset: any): Asset {
       });
   }
 
-  // Use demo vendors if API fails
   useDemoVendors(): void {
     this.vendorList = [
       { name: 'Tech Suppliers Inc.', contactPerson: 'John Doe', email: 'john@techsuppliers.com', phone: '+1-555-0123', address: '123 Tech Park, City' },
@@ -559,39 +672,34 @@ private mapAssetFromAPI(apiAsset: any): Asset {
     this.vendorOptions = ['', ...this.vendorList.map(v => v.name)];
   }
 
-  // Handle department change for employee dropdown
-onDepartmentChange(event: any): void {
-  const departmentId = event.target.value;
-  this.filteredEmployees = [];
-  
-  if (!departmentId) {
-    this.assetForm.get('allocatedTo')?.setValue('');
-    return;
-  }
-  
-  // Make API call to get employees by group ID
-  this.http.get<any>('http://localhost:3000/api/employees/by-group', {
-    params: new HttpParams().set('grp_id', departmentId)
-  }).subscribe({
-    next: (resp) => {
-      if (resp?.success && Array.isArray(resp.data)) {
-        this.filteredEmployees = resp.data;
-        console.log('Filtered employees:', this.filteredEmployees);
-      } else {
-        this.filteredEmployees = [];
-        console.warn('No employees found for department:', departmentId);
-      }
+  onDepartmentChange(event: any): void {
+    const departmentId = event.target.value;
+    this.filteredEmployees = [];
+    
+    if (!departmentId) {
       this.assetForm.get('allocatedTo')?.setValue('');
-    },
-    error: (error) => {
-      console.error('Error fetching employees:', error);
-      this.filteredEmployees = [];
-      this.assetForm.get('allocatedTo')?.setValue('');
+      return;
     }
-  });
-}
+    
+    this.http.get<any>('http://localhost:3000/api/employees/by-group', {
+      params: new HttpParams().set('grp_id', departmentId)
+    }).subscribe({
+      next: (resp) => {
+        if (resp?.success && Array.isArray(resp.data)) {
+          this.filteredEmployees = resp.data;
+        } else {
+          this.filteredEmployees = [];
+        }
+        this.assetForm.get('allocatedTo')?.setValue('');
+      },
+      error: (error) => {
+        console.error('Error fetching employees:', error);
+        this.filteredEmployees = [];
+        this.assetForm.get('allocatedTo')?.setValue('');
+      }
+    });
+  }
 
-  // Handle vendor change to auto-fill vendor details
   onVendorChange(event: any): void {
     const vendorName = event.target.value;
     if (vendorName) {
@@ -610,14 +718,12 @@ onDepartmentChange(event: any): void {
     }
   }
 
-  // Handle pagination events
   onPageChange(event: PageEvent): void {
     this.currentPage = event.pageIndex + 1;
     this.pageSize = event.pageSize;
     this.loadAssets();
   }
 
-  // Open Add Asset Modal
   openAddAssetModal(): void {
     this.editingAsset = null;
     this.assetForm.reset({
@@ -627,7 +733,6 @@ onDepartmentChange(event: any): void {
     this.allocationReason = '';
     this.showAssetModal = true;
 
-    // Fetch next auto-increment asset id
     this.http.get<any>('http://localhost:3000/api/assets/next-id')
       .subscribe({
         next: (resp) => {
@@ -643,7 +748,6 @@ onDepartmentChange(event: any): void {
         }
       });
 
-    // Load departments dynamically
     this.http.get<any>('http://localhost:3000/api/departments')
       .subscribe({
         next: (resp) => {
@@ -659,50 +763,17 @@ onDepartmentChange(event: any): void {
       });
   }
 
-
-  // Add this method to your component class
-setupStatusChangeListener(): void {
-  this.assetForm.get('status')?.valueChanges.subscribe((status) => {
-    const reasonControl = this.assetForm.get('reason');
-    
-    if (status === 'Maintenance' || status === 'Retired') {
-      // Add validation for reason when status is Maintenance or Retired
-      if (!reasonControl) {
-        this.assetForm.addControl('reason', new FormControl('', Validators.required));
-      } else {
-        reasonControl.setValidators(Validators.required);
-        reasonControl.updateValueAndValidity();
-      }
-    } else {
-      // Remove validation and clear value for other statuses
-      if (reasonControl) {
-        reasonControl.clearValidators();
-        reasonControl.setValue('');
-        reasonControl.updateValueAndValidity();
-      }
-      // Also clear the component property
-      this.allocationReason = '';
-    }
-  });
-}
-
-  // Edit Asset
   editAsset(asset: Asset): void {
     this.editingAsset = asset;
-    
-    // Determine department based on allocated employee
-    let department = '';
     
     this.assetForm.patchValue({
       assetId: asset.assetId,
       serialNumber: asset.serialNumber,
-      
       name: asset.name,
       type: asset.type,
       brand: asset.brand,
       model: asset.model,
       status: asset.status,
-      department: department,
       allocatedTo: asset.allocatedTo,
       vendor: asset.vendor,
       vendorEmail: asset.vendorEmail,
@@ -712,13 +783,10 @@ setupStatusChangeListener(): void {
       purchaseCost: asset.purchaseCost
     });
     
-    // Set filtered employees based on department
     this.filteredEmployees = [];
-    
     this.showAssetModal = true;
   }
 
-  // Close Add Asset Modal
   closeAddAssetModal(): void {
     this.showAssetModal = false;
     this.editingAsset = null;
@@ -727,130 +795,107 @@ setupStatusChangeListener(): void {
     this.allocationReason = '';
   }
 
-  // Submit Asset Form
- 
-onAssetSubmit(): void {
-  const formValue = this.assetForm.value;
-  const status = formValue.status;
-  
-  // Manual validation for reason field
-  if ((status === 'Maintenance' || status === 'Retired') && !this.allocationReason?.trim()) {
-    alert('Please provide a reason for Maintenance or Retired status.');
-    return;
-  }
-
-  // Remove reason from form validation check
-  const formWithoutReason = { ...this.assetForm.controls };
-  // delete formWithoutReason.reason; // Remove reason from validation
-  
-  // Check if main form fields are valid (excluding reason)
-  const mainFormValid = Object.keys(formWithoutReason).every(key => 
-    this.assetForm.get(key)?.valid || this.assetForm.get(key)?.disabled
-  );
-
-  if (mainFormValid) {
-    // Create the API payload with correct field mapping
-    const apiPayload: any = {
-      asset_id: formValue.assetId || this.nextAssetId,
-      serial_number: formValue.serialNumber,
-      name: formValue.name,
-      type: formValue.type,
-      brand: formValue.brand,
-      model: formValue.model,
-      status: formValue.status,
-      allocated_to: formValue.allocatedTo || null,
-      vendor: formValue.vendor,
-      vendor_email: formValue.vendorEmail,
-      vendor_contact: formValue.vendorContact,
-      warranty_expiry: formValue.warrantyExpiry || null,
-      purchase_date: formValue.purchaseDate || null,
-      purchase_cost: formValue.purchaseCost || null
-    };
-
-    // Add reason field when needed
-    if ((status === 'Maintenance' || status === 'Retired') && this.allocationReason?.trim()) {
-      apiPayload.reason = this.allocationReason.trim();
-    }
+  onAssetSubmit(): void {
+    const formValue = this.assetForm.value;
+    const status = formValue.status;
     
-    // Convert empty strings to null for optional fields
-    Object.keys(apiPayload).forEach(key => {
-      if (apiPayload[key] === '') {
-        apiPayload[key] = null;
+    if ((status === 'Maintenance' || status === 'Retired') && !this.allocationReason?.trim()) {
+      alert('Please provide a reason for Maintenance or Retired status.');
+      return;
+    }
+
+    const formWithoutReason = { ...this.assetForm.controls };
+    
+    const mainFormValid = Object.keys(formWithoutReason).every(key => 
+      this.assetForm.get(key)?.valid || this.assetForm.get(key)?.disabled
+    );
+
+    if (mainFormValid) {
+      const apiPayload: any = {
+        asset_id: formValue.assetId || this.nextAssetId,
+        serial_number: formValue.serialNumber,
+        name: formValue.name,
+        type: formValue.type,
+        brand: formValue.brand,
+        model: formValue.model,
+        status: formValue.status,
+        allocated_to: formValue.allocatedTo || null,
+        vendor: formValue.vendor,
+        vendor_email: formValue.vendorEmail,
+        vendor_contact: formValue.vendorContact,
+        warranty_expiry: formValue.warrantyExpiry || null,
+        purchase_date: formValue.purchaseDate || null,
+        purchase_cost: formValue.purchaseCost || null
+      };
+
+      if ((status === 'Maintenance' || status === 'Retired') && this.allocationReason?.trim()) {
+        apiPayload.reason = this.allocationReason.trim();
       }
-    });
-    
-    if (this.editingAsset) {
-      // Update existing asset
-      this.http.put(`http://localhost:3000/api/assets/${this.editingAsset.assetId}`, apiPayload)
-        .subscribe({
-          next: (response: any) => {
-            console.log('Update response:', response);
-            if (response.success) {
-              this.loadAssets();
-              this.closeAddAssetModal();
-              alert('Asset updated successfully!');
-            } else {
-              console.error('Update failed:', response);
-              alert('Failed to update asset. Please try again.');
+      
+      Object.keys(apiPayload).forEach(key => {
+        if (apiPayload[key] === '') {
+          apiPayload[key] = null;
+        }
+      });
+      
+      if (this.editingAsset) {
+        this.http.put(`http://localhost:3000/api/assets/${this.editingAsset.assetId}`, apiPayload)
+          .subscribe({
+            next: (response: any) => {
+              if (response.success) {
+                this.loadAssets();
+                this.closeAddAssetModal();
+                alert('Asset updated successfully!');
+              } else {
+                alert('Failed to update asset. Please try again.');
+              }
+            },
+            error: (error) => {
+              console.error('Error updating asset:', error);
+              alert('Error updating asset. Please try again.');
             }
-          },
-          error: (error) => {
-            console.error('Error updating asset:', error);
-            alert('Error updating asset. Please try again.');
-          }
-        });
+          });
+      } else {
+        this.http.post('http://localhost:3000/api/assets', apiPayload)
+          .subscribe({
+            next: (response: any) => {
+              if (response.success) {
+                this.loadAssets();
+                this.closeAddAssetModal();
+                alert('Asset added successfully!');
+                this.nextAssetId = null;
+                this.allocationReason = '';
+              } else {
+                alert(`Failed to add asset: ${response.message || 'Please try again.'}`);
+              }
+            },
+            error: (error) => {
+              console.error('Error creating asset:', error);
+              const errorMessage = error.error?.message || error.message || 'Unknown error occurred';
+              alert(`Error creating asset: ${errorMessage}`);
+            }
+          });
+      }
     } else {
-      // Create new asset
-      console.log('Creating asset with payload:', apiPayload);
-      this.http.post('http://localhost:3000/api/assets', apiPayload)
-        .subscribe({
-          next: (response: any) => {
-            console.log('Asset creation response:', response);
-            if (response.success) {
-              this.loadAssets();
-              this.closeAddAssetModal();
-              alert('Asset added successfully!');
-              this.nextAssetId = null;
-              this.allocationReason = '';
-            } else {
-              console.error('Creation failed:', response);
-              alert(`Failed to add asset: ${response.message || 'Please try again.'}`);
-            }
-          },
-          error: (error) => {
-            console.error('Error creating asset:', error);
-            const errorMessage = error.error?.message || error.message || 'Unknown error occurred';
-            alert(`Error creating asset: ${errorMessage}`);
-          }
-        });
+      Object.keys(formWithoutReason).forEach(key => {
+        this.assetForm.get(key)?.markAsTouched();
+      });
+      
+      const invalidFields = Object.keys(formWithoutReason)
+        .filter(key => this.assetForm.get(key)?.invalid)
+        .join(', ');
+      
+      alert(`Please fill all required fields correctly. Invalid fields: ${invalidFields}`);
     }
-  } else {
-    // Mark all main fields as touched to show validation errors
-    Object.keys(formWithoutReason).forEach(key => {
-      this.assetForm.get(key)?.markAsTouched();
-    });
-    
-    const invalidFields = Object.keys(formWithoutReason)
-      .filter(key => this.assetForm.get(key)?.invalid)
-      .join(', ');
-    
-    alert(`Please fill all required fields correctly. Invalid fields: ${invalidFields}`);
   }
-}
 
-// Also, make sure your form initialization includes all required fields
-// Update your constructor or ngOnInit to ensure proper form setup:
-
-
-
-  // Delete Asset
   deleteAsset(asset: Asset): void {
     if (confirm(`Are you sure you want to delete asset ${asset.serialNumber}?`)) {
       this.http.delete(`http://localhost:3000/api/assets/${asset.assetId || asset.serialNumber}`)
         .subscribe({
           next: (response: any) => {
             if (response.success) {
-              this.loadAssets(); // Reload to refresh the table
+              this.loadAssets();
               alert('Asset deleted successfully!');
             } else {
               alert('Failed to delete asset. Please try again.');
@@ -888,7 +933,6 @@ onAssetSubmit(): void {
     if (this.vendorForm.valid) {
       const formValue = this.vendorForm.value;
       
-      // Convert to backend format
       const apiPayload = {
         name: formValue.name,
         contact_person: formValue.contactPerson,
@@ -898,12 +942,11 @@ onAssetSubmit(): void {
       };
       
       if (this.editingVendor) {
-        // Update existing vendor
         this.http.put(`http://localhost:3000/api/vendors/${this.editingVendor.id}`, apiPayload)
           .subscribe({
             next: (response: any) => {
               if (response.success) {
-                this.loadVendors(); // Reload vendors
+                this.loadVendors();
                 this.closeAddVendorModal();
                 alert('Vendor updated successfully!');
               } else {
@@ -916,12 +959,11 @@ onAssetSubmit(): void {
             }
           });
       } else {
-        // Create new vendor
         this.http.post('http://localhost:3000/api/vendors', apiPayload)
           .subscribe({
             next: (response: any) => {
               if (response.success) {
-                this.loadVendors(); // Reload vendors
+                this.loadVendors();
                 this.closeAddVendorModal();
                 alert('Vendor added successfully!');
               } else {
@@ -935,7 +977,6 @@ onAssetSubmit(): void {
           });
       }
     } else {
-      // Mark all fields as touched to show validation errors
       Object.keys(this.vendorForm.controls).forEach(key => {
         this.vendorForm.get(key)?.markAsTouched();
       });
@@ -949,7 +990,7 @@ onAssetSubmit(): void {
         .subscribe({
           next: (response: any) => {
             if (response.success) {
-              this.loadVendors(); // Reload vendors
+              this.loadVendors();
               alert('Vendor deleted successfully!');
             } else {
               alert('Failed to delete vendor. Please try again.');
@@ -963,69 +1004,8 @@ onAssetSubmit(): void {
     }
   }
 
-  // ==================== TICKET FUNCTIONS ====================
-
-  openTicketAction(ticket: Ticket): void {
-    this.selectedTicket = {...ticket};
-    this.ticketResponse = '';
-    this.informationRequest = '';
-  }
-
-  submitTicketAction(): void {
-    if (this.selectedTicket) {
-      // Update ticket status
-      const index = this.ticketList.findIndex(t => t.id === this.selectedTicket!.id);
-      if (index !== -1) {
-        this.ticketList[index].status = this.selectedTicket!.status;
-        this.ticketDataSource.data = [...this.ticketList];
-        this.updateTicketCounts();
-      }
-      
-      // Add to activity logs for HR response
-      if (this.ticketResponse) {
-        this.activityLogs.unshift({
-          timestamp: new Date(),
-          message: `HR Response: ${this.ticketResponse}`,
-          user: this.selectedTicket.employee,
-          device: 'N/A',
-          issueType: 'Ticket Update',
-          addedBy: 'HR'
-        });
-      }
-      
-      // Add to activity logs for information request
-      if (this.informationRequest) {
-        this.activityLogs.unshift({
-          timestamp: new Date(),
-          message: `Information Request: ${this.informationRequest}`,
-          user: this.selectedTicket.employee,
-          device: 'N/A',
-          issueType: 'Information Request',
-          addedBy: 'HR'
-        });
-      }
-      
-      this.selectedTicket = null;
-    }
-  }
-
-  // Recalculate ticket counters based on ticketList
-  updateTicketCounts(): void {
-    const open = this.ticketList.filter(t => t.status === 'Open').length;
-    const pending = this.ticketList.filter(t => t.status === 'Pending').length;
-    const closed = this.ticketList.filter(t => t.status === 'Closed').length;
-    this.activeTickets = open;
-    this.pendingTickets = pending;
-    this.closedTickets = closed;
-  }
-
-  openEvidenceModal(evidence: Evidence): void {
-    this.selectedEvidence = evidence;
-  }
-
   // ==================== ACTIVITY LOGS ====================
 
-  // Activity Logs Grouping
   get groupedActivityLogs() {
     const grouped: { [key: string]: DateGroup } = {};
     
@@ -1052,7 +1032,6 @@ onAssetSubmit(): void {
       grouped[dateStr].userActivities[userKey].activities.push(log);
     });
     
-    // Convert to array format and sort
     return Object.keys(grouped).map(date => {
       return {
         date: grouped[date].date,
