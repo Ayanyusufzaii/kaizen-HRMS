@@ -4,14 +4,12 @@ const multer = require('multer');
 const path = require('path');
 const mysql = require('mysql2');
 
-
 const connection = mysql.createConnection({
   host: 'localhost',
   user: 'root',
   password: '000000',
   database: 'hrms'
 });
-
 
 // Multer setup for file upload
 const storage = multer.diskStorage({
@@ -26,9 +24,108 @@ const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 } });
 
 module.exports = (db) => {
 
+// ==================== ACTIVITY LOG HELPER FUNCTIONS ====================
 
+const createActivityLog = (logData) => {
+  return new Promise((resolve, reject) => {
+    const sql = `
+      INSERT INTO activity_logs 
+      (employee_id, employee_email, employee_name, action_type, action_description, 
+       asset_id, ticket_id, performed_by, performed_by_name, additional_data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    
+    const values = [
+      logData.employee_id || null,
+      logData.employee_email || null,
+      logData.employee_name || null,
+      logData.action_type,
+      logData.action_description,
+      logData.asset_id || null,
+      logData.ticket_id || null,
+      logData.performed_by,
+      logData.performed_by_name,
+      logData.additional_data ? JSON.stringify(logData.additional_data) : null
+    ];
+    
+    db.query(sql, values, (err, result) => {
+      if (err) {
+        console.error('Error creating activity log:', err);
+        reject(err);
+      } else {
+        console.log('Activity log created successfully:', result.insertId);
+        resolve(result);
+      }
+    });
+  });
+};
 
-  // Login API
+const getEmployeeDetailsByEmail = (email) => {
+  return new Promise((resolve, reject) => {
+    const sql = 'SELECT employee_id, name, email FROM users WHERE email = ?';
+    db.query(sql, [email], (err, results) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(results[0] || { employee_id: null, name: 'Unknown Employee', email: email });
+      }
+    });
+  });
+};
+
+const logTicketConversation = async (ticketId, actionType, description, performedBy, performedByName, additionalData = null) => {
+  try {
+    const getTicketSql = `
+      SELECT mt.reported_by, mt.asset_id, u.employee_id, u.name 
+      FROM maintenance_tickets mt 
+      LEFT JOIN users u ON mt.reported_by = u.email 
+      WHERE mt.ticket_id = ?
+    `;
+    
+    return new Promise((resolve, reject) => {
+      db.query(getTicketSql, [ticketId], async (err, results) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        if (results.length === 0) {
+          reject(new Error('Ticket not found'));
+          return;
+        }
+        
+        const ticket = results[0];
+        
+        const logData = {
+          employee_id: ticket.employee_id,
+          employee_email: ticket.reported_by,
+          employee_name: ticket.name || 'Unknown Employee',
+          action_type: actionType,
+          action_description: description,
+          asset_id: ticket.asset_id,
+          ticket_id: ticketId,
+          performed_by: performedBy,
+          performed_by_name: performedByName,
+          additional_data: additionalData
+        };
+        
+        try {
+          const result = await createActivityLog(logData);
+          resolve(result);
+        } catch (logError) {
+          reject(logError);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error logging ticket conversation:', error);
+    throw error;
+  }
+};
+
+// ==================== EXISTING ROUTES ====================
+
+// Login API
 router.post('/login', (req, res) => {
   const { email, password } = req.body;
 
@@ -47,7 +144,6 @@ router.post('/login', (req, res) => {
     if (results.length > 0) {
       const user = results[0];
 
-      
       if (user.status === 'paused') {
         return res.status(403).json({ 
           success: false, 
@@ -80,203 +176,189 @@ router.post('/login', (req, res) => {
   });
 });
 
+// Profile submission API
+const profileStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `${Date.now()}-${file.originalname}`;
+    cb(null, uniqueName);
+  },
+});
 
-  //  Profile submission API
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-      const uniqueName = `${Date.now()}-${file.originalname}`;
-      cb(null, uniqueName);
-    },
-  });
-  
-  const upload = multer({ storage });
-  
-  const cpUpload = upload.fields([
-    { name: 'profileImage', maxCount: 1 },
-    { name: 'aadharPdf', maxCount: 1 },
-    { name: 'panPdf', maxCount: 1 },
-    { name: 'salarySlips', maxCount: 10 },
-    { name: 'educationDocs', maxCount: 10 },
-    { name: 'experienceDocs', maxCount: 10 },
-  ]);
-  
-  router.post('/profile', cpUpload, (req, res) => {
-    try {
-      // Logging the request to check fields and files
-      console.log('Request Body:', req.body);
-      console.log('Uploaded Files:', req.files);
-  
-      const {
-        employeeId, name, contactNo, email, alternateContact, emergencyContact,
-        bloodGroup, permanentAddress, currentAddress, aadharNumber, panNumber,
-        department, jobRole, dob, doj
-      } = req.body;
-  
-      const formatDate = (isoString) => {
-        if (!isoString) return null;
-        const date = new Date(isoString);
-        return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
-      };
-  
-      const formattedDob = formatDate(dob);
-      const formattedDoj = formatDate(doj);
-  
-      if (!formattedDob || !formattedDoj) {
-        return res.status(400).json({ success: false, message: 'Invalid date format' });
-      }
-  
-      const files = req.files || {};
-      const profileImage = files['profileImage']?.[0]?.filename || null;
-      const aadharPdf = files['aadharPdf']?.[0]?.filename || null;
-      const panPdf = files['panPdf']?.[0]?.filename || null;
-      const salarySlips = files['salarySlips']?.map(f => f.filename) || [];
-      const educationDocs = files['educationDocs']?.map(f => f.filename) || [];
-      const experienceDocs = files['experienceDocs']?.map(f => f.filename) || [];
-  
-      const sql = `INSERT INTO employee_profiles 
-        (employee_id, name, contact_no, email, alternate_contact, emergency_contact,
-        blood_group, permanent_address, current_address, aadhar_number, pan_number,
-        department, job_role, dob, doj, profile_image,
-        aadhar_card, pan_card, salary_slips, educational_certificates, experience_letters)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE 
-          name = VALUES(name),
-          contact_no = VALUES(contact_no),
-          email = VALUES(email),
-          alternate_contact = VALUES(alternate_contact),
-          emergency_contact = VALUES(emergency_contact),
-          blood_group = VALUES(blood_group),
-          permanent_address = VALUES(permanent_address),
-          current_address = VALUES(current_address),
-          aadhar_number = VALUES(aadhar_number),
-          pan_number = VALUES(pan_number),
-          department = VALUES(department),
-          job_role = VALUES(job_role),
-          dob = VALUES(dob),
-          doj = VALUES(doj),
-          profile_image = VALUES(profile_image),
-          aadhar_card = VALUES(aadhar_card),
-          pan_card = VALUES(pan_card),
-          salary_slips = VALUES(salary_slips),
-          educational_certificates = VALUES(educational_certificates),
-          experience_letters = VALUES(experience_letters)`;
-  
-      const values = [
-        employeeId, name, contactNo, email, alternateContact, emergencyContact,
-        bloodGroup, permanentAddress, currentAddress, aadharNumber, panNumber,
-        department, jobRole, formattedDob, formattedDoj, profileImage,
-        aadharPdf, panPdf, JSON.stringify(salarySlips),
-        JSON.stringify(educationDocs), JSON.stringify(experienceDocs)
-      ];
-  
+const profileUpload = multer({ storage: profileStorage });
 
+const cpUpload = profileUpload.fields([
+  { name: 'profileImage', maxCount: 1 },
+  { name: 'aadharPdf', maxCount: 1 },
+  { name: 'panPdf', maxCount: 1 },
+  { name: 'salarySlips', maxCount: 10 },
+  { name: 'educationDocs', maxCount: 10 },
+  { name: 'experienceDocs', maxCount: 10 },
+]);
 
+router.post('/profile', cpUpload, (req, res) => {
+  try {
+    console.log('Request Body:', req.body);
+    console.log('Uploaded Files:', req.files);
 
-      db.query(sql, values, (err, results) => {
-        if (err) {
-          console.error('❌ Database error:', err);
-          return res.status(500).json({ success: false, message: 'Server error' });
-        }
-  
-        res.status(200).json({ success: true, message: 'Profile submitted successfully' });
-      });
-    } catch (err) {
-      console.error('❌ Error processing profile submission:', err);
-      res.status(400).json({ success: false, message: 'File upload failed' });
+    const {
+      employeeId, name, contactNo, email, alternateContact, emergencyContact,
+      bloodGroup, permanentAddress, currentAddress, aadharNumber, panNumber,
+      department, jobRole, dob, doj
+    } = req.body;
+
+    const formatDate = (isoString) => {
+      if (!isoString) return null;
+      const date = new Date(isoString);
+      return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+    };
+
+    const formattedDob = formatDate(dob);
+    const formattedDoj = formatDate(doj);
+
+    if (!formattedDob || !formattedDoj) {
+      return res.status(400).json({ success: false, message: 'Invalid date format' });
     }
-  });
-  
 
+    const files = req.files || {};
+    const profileImage = files['profileImage']?.[0]?.filename || null;
+    const aadharPdf = files['aadharPdf']?.[0]?.filename || null;
+    const panPdf = files['panPdf']?.[0]?.filename || null;
+    const salarySlips = files['salarySlips']?.map(f => f.filename) || [];
+    const educationDocs = files['educationDocs']?.map(f => f.filename) || [];
+    const experienceDocs = files['experienceDocs']?.map(f => f.filename) || [];
 
-  // Get all employee profiles
-  router.get('/employee-profiles', (req, res) => {
-    const sql = 'SELECT * FROM employee_profiles';
+    const sql = `INSERT INTO employee_profiles 
+      (employee_id, name, contact_no, email, alternate_contact, emergency_contact,
+      blood_group, permanent_address, current_address, aadhar_number, pan_number,
+      department, job_role, dob, doj, profile_image,
+      aadhar_card, pan_card, salary_slips, educational_certificates, experience_letters)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE 
+        name = VALUES(name),
+        contact_no = VALUES(contact_no),
+        email = VALUES(email),
+        alternate_contact = VALUES(alternate_contact),
+        emergency_contact = VALUES(emergency_contact),
+        blood_group = VALUES(blood_group),
+        permanent_address = VALUES(permanent_address),
+        current_address = VALUES(current_address),
+        aadhar_number = VALUES(aadhar_number),
+        pan_number = VALUES(pan_number),
+        department = VALUES(department),
+        job_role = VALUES(job_role),
+        dob = VALUES(dob),
+        doj = VALUES(doj),
+        profile_image = VALUES(profile_image),
+        aadhar_card = VALUES(aadhar_card),
+        pan_card = VALUES(pan_card),
+        salary_slips = VALUES(salary_slips),
+        educational_certificates = VALUES(educational_certificates),
+        experience_letters = VALUES(experience_letters)`;
 
-    db.query(sql, (err, results) => {
+    const values = [
+      employeeId, name, contactNo, email, alternateContact, emergencyContact,
+      bloodGroup, permanentAddress, currentAddress, aadharNumber, panNumber,
+      department, jobRole, formattedDob, formattedDoj, profileImage,
+      aadharPdf, panPdf, JSON.stringify(salarySlips),
+      JSON.stringify(educationDocs), JSON.stringify(experienceDocs)
+    ];
+
+    db.query(sql, values, (err, results) => {
       if (err) {
-        console.error('Database error:', err);
+        console.error('❌ Database error:', err);
         return res.status(500).json({ success: false, message: 'Server error' });
       }
 
-      res.status(200).json({ success: true, data: results });
+      res.status(200).json({ success: true, message: 'Profile submitted successfully' });
     });
-  });
+  } catch (err) {
+    console.error('❌ Error processing profile submission:', err);
+    res.status(400).json({ success: false, message: 'File upload failed' });
+  }
+});
 
+// Get all employee profiles
+router.get('/employee-profiles', (req, res) => {
+  const sql = 'SELECT * FROM employee_profiles';
 
-  // Delete employee by email
-  router.delete('/employee-profiles/email/:email', (req, res) => {
-    const email = req.params.email;
-    const sql = 'DELETE FROM employee_profiles WHERE email = ?';
-
-    db.query(sql, [email], (err, result) => {
-      if (err) {
-        console.error('Error deleting employee:', err);
-        return res.status(500).json({ success: false, message: 'Server error' });
-      }
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ success: false, message: 'Employee not found' });
-      }
-
-      res.status(200).json({ success: true, message: 'Employee deleted successfully' });
-    });
-  });
-
-  //  Create Employee API
-
-  router.post('/create-employee', (req, res) => {
-    const { name, email, password, grp_id, employeeId } = req.body;
-
-    if (!name || !email || !password || !grp_id || !employeeId) {
-      return res.status(400).json({ success: false, message: 'All fields are required' });
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
     }
 
-    // Check if the Employee ID already exists
-    const checkEmployeeIdSql = 'SELECT * FROM users WHERE employee_id = ?';
-    db.query(checkEmployeeIdSql, [employeeId], (err, results) => {
+    res.status(200).json({ success: true, data: results });
+  });
+});
+
+// Delete employee by email
+router.delete('/employee-profiles/email/:email', (req, res) => {
+  const email = req.params.email;
+  const sql = 'DELETE FROM employee_profiles WHERE email = ?';
+
+  db.query(sql, [email], (err, result) => {
+    if (err) {
+      console.error('Error deleting employee:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    res.status(200).json({ success: true, message: 'Employee deleted successfully' });
+  });
+});
+
+// Create Employee API
+router.post('/create-employee', (req, res) => {
+  const { name, email, password, grp_id, employeeId } = req.body;
+
+  if (!name || !email || !password || !grp_id || !employeeId) {
+    return res.status(400).json({ success: false, message: 'All fields are required' });
+  }
+
+  const checkEmployeeIdSql = 'SELECT * FROM users WHERE employee_id = ?';
+  db.query(checkEmployeeIdSql, [employeeId], (err, results) => {
+    if (err) {
+      console.error('Database error (check existing employee ID):', err);
+      return res.status(500).json({ success: false, message: 'Server error checking employee ID' });
+    }
+
+    if (results.length > 0) {
+      return res.status(409).json({ success: false, message: 'Employee ID already exists' });
+    }
+
+    const checkEmailSql = 'SELECT * FROM users WHERE email = ?';
+    db.query(checkEmailSql, [email], (err, results) => {
       if (err) {
-        console.error('Database error (check existing employee ID):', err);
-        return res.status(500).json({ success: false, message: 'Server error checking employee ID' });
+        console.error('Database error (check existing email):', err);
+        return res.status(500).json({ success: false, message: 'Server error checking email' });
       }
 
       if (results.length > 0) {
-        return res.status(409).json({ success: false, message: 'Employee ID already exists' });
+        return res.status(409).json({ success: false, message: 'User already exists with this email' });
       }
 
-      // Check if email already exists
-      const checkEmailSql = 'SELECT * FROM users WHERE email = ?';
-      db.query(checkEmailSql, [email], (err, results) => {
+      const insertSql = `INSERT INTO users (name, email, password, grp_id, employee_id) VALUES (?, ?, ?, ?, ?)`;
+      const values = [name, email, password, grp_id, employeeId];
+
+      db.query(insertSql, values, (err, results) => {
         if (err) {
-          console.error('Database error (check existing email):', err);
-          return res.status(500).json({ success: false, message: 'Server error checking email' });
+          console.error('Database error (insert):', err);
+          return res.status(500).json({ success: false, message: 'Server error inserting employee' });
         }
 
-        if (results.length > 0) {
-          return res.status(409).json({ success: false, message: 'User already exists with this email' });
-        }
-
-        // Insert the new employee
-        const insertSql = `INSERT INTO users (name, email, password, grp_id, employee_id) VALUES (?, ?, ?, ?, ?)`;
-        const values = [name, email, password, grp_id, employeeId];
-
-        db.query(insertSql, values, (err, results) => {
-          if (err) {
-            console.error('Database error (insert):', err);
-            return res.status(500).json({ success: false, message: 'Server error inserting employee' });
-          }
-
-          console.log('Employee created successfully:', results);
-          res.status(200).json({ success: true, message: 'Employee created successfully' });
-        });
+        console.log('Employee created successfully:', results);
+        res.status(200).json({ success: true, message: 'Employee created successfully' });
       });
     });
   });
+});
 
-// API to fetch user profile by user ID
-// API to fetch logged-in user profile
 // GET user profile by email
 router.get('/user/profile', (req, res) => {
   const { email } = req.query;
@@ -325,7 +407,6 @@ router.get('/user/profile', (req, res) => {
 
     const profile = result[0];
 
-    // Parse arrays safely
     try {
       profile.salarySlips = JSON.parse(profile.salarySlips || '[]');
       profile.educationDocs = JSON.parse(profile.educationDocs || '[]');
@@ -334,7 +415,6 @@ router.get('/user/profile', (req, res) => {
       console.warn('⚠️ JSON parse error:', parseErr);
     }
 
-    // Build unified documents array
     profile.documents = [];
 
     if (profile.aadharPdf) {
@@ -357,12 +437,173 @@ router.get('/user/profile', (req, res) => {
   });
 });
 
+// ==================== ENHANCED TICKET ROUTES WITH CONVERSATION LOGGING ====================
+
+// Enhanced ticket creation with comprehensive logging
+router.post('/raise-ticket', upload.array('files', 5), async (req, res) => {
+  try {
+    const {
+      asset_id,
+      reported_by,
+      issue_description,
+      priority = 'Medium'
+    } = req.body;
+
+    if (!asset_id || !reported_by || !issue_description) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Asset ID, reporter email, and issue description are required' 
+      });
+    }
+
+    const year = new Date().getFullYear();
+    const prefix = `TID${year}`;
+    
+    const getNextTicketIdSql = `
+      SELECT LPAD(COALESCE(MAX(CAST(SUBSTRING(ticket_id, 8) AS UNSIGNED)), 0) + 1, 4, '0') AS seq
+      FROM maintenance_tickets
+      WHERE ticket_id LIKE ?
+    `;
+
+    db.query(getNextTicketIdSql, [`${prefix}%`], async (err, results) => {
+      if (err) {
+        console.error('Error generating ticket ID:', err);
+        return res.status(500).json({ success: false, message: 'Error generating ticket ID' });
+      }
+
+      const seq = results[0]?.seq || '0001';
+      const ticket_id = `${prefix}${seq}`;
+      const created_at = new Date();
+
+      const insertTicketSql = `
+        INSERT INTO maintenance_tickets (
+          ticket_id, asset_id, reported_by, issue_description, status, priority, created_at
+        ) VALUES (?, ?, ?, ?, 'Open', ?, ?)
+      `;
+
+      db.query(insertTicketSql, [ticket_id, asset_id, reported_by, issue_description, priority, created_at], async (err, result) => {
+        if (err) {
+          console.error('Error inserting ticket:', err);
+          return res.status(500).json({ success: false, message: 'Failed to create ticket' });
+        }
+
+        try {
+          const employee = await getEmployeeDetailsByEmail(reported_by);
+
+          // 🔹 Log into ticket_conversations
+          await logTicketConversation(
+            ticket_id,
+            'ticket_created',
+            `New ticket created: "${issue_description}"`,
+            reported_by,
+            employee.name,
+            {
+              issue_description: issue_description,
+              priority: priority,
+              asset_id: asset_id,
+              has_evidence: req.files && req.files.length > 0,
+              evidence_count: req.files ? req.files.length : 0
+            }
+          );
+
+          // 🔹 Insert into activity_logs table
+          const insertActivitySql = `
+            INSERT INTO activity_logs (
+              employee_email, employee_id, employee_name,
+              action_type, action_description,
+              asset_id, ticket_id,
+              performed_by, performed_by_name,
+              created_at, additional_data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `;
+
+          // const activityData = [
+          //   reported_by,
+          //   employee.id,   // assuming getEmployeeDetailsByEmail returns {id, name, email,...}
+          //   employee.name,
+          //   'ticket_created',
+          //   `Raised new ticket for asset ${asset_id}`,
+          //   asset_id,
+          //   ticket_id,
+          //   reported_by,
+          //   employee.name,
+          //   new Date(),
+          //   JSON.stringify({
+          //     issue_description,
+          //     priority,
+          //     has_evidence: req.files && req.files.length > 0,
+          //     evidence_count: req.files ? req.files.length : 0
+          //   })
+          // ];
+
+          db.query(insertActivitySql, activityData, (err3) => {
+            if (err3) {
+              console.error('Error inserting into activity_logs:', err3);
+            }
+          });
+
+          // 🔹 Handle evidence uploads
+          if (req.files && req.files.length > 0) {
+            const evidenceValues = req.files.map(file => [
+              ticket_id,
+              file.mimetype.startsWith('video') ? 'video' : 'image',
+              file.filename,
+              new Date()
+            ]);
+
+            const insertEvidenceSql = `
+              INSERT INTO ticket_evidence (ticket_id, file_type, file_path, uploaded_at)
+              VALUES ?
+            `;
+
+            db.query(insertEvidenceSql, [evidenceValues], async (err2) => {
+              if (!err2) {
+                await logTicketConversation(
+                  ticket_id,
+                  'evidence_uploaded',
+                  `Uploaded ${req.files.length} evidence file(s)`,
+                  reported_by,
+                  employee.name,
+                  {
+                    files: req.files.map(f => ({
+                      name: f.filename,
+                      type: f.mimetype.startsWith('video') ? 'video' : 'image',
+                      size: f.size
+                    }))
+                  }
+                );
+              }
+            });
+          }
+
+          res.json({ 
+            success: true, 
+            message: 'Ticket raised successfully.',
+            data: { ticket_id }
+          });
+
+        } catch (logError) {
+          console.error('Error logging ticket creation:', logError);
+          res.json({ 
+            success: true, 
+            message: 'Ticket raised successfully.',
+            data: { ticket_id }
+          });
+        }
+      });
+    });
+
+  } catch (error) {
+    console.error('Unexpected error in raise-ticket:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
 
 
+// Get leave requests
 router.post('/leave-requests', (req, res) => {
   const { emailId, leaveType, fromDate, toDate, status, reason } = req.body;
 
-  // Query to insert a new leave request
   const sql = `
     INSERT INTO all_leaves (emailid, leavetype, fromdate, todate, status, reason)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -379,8 +620,6 @@ router.post('/leave-requests', (req, res) => {
   });
 });
 
-
-
 router.get('/get-leave-requests', (req, res) => {
   console.log("Request to /api/get-leave-requests received");
   const query = 'SELECT * FROM all_leaves WHERE status = "Pending"';
@@ -389,17 +628,13 @@ router.get('/get-leave-requests', (req, res) => {
       console.error(err);
       return res.status(500).json({ message: 'Error fetching leave requests' });
     }
-    console.log("Fetched results:", results); // Add this line
+    console.log("Fetched results:", results);
     res.json({ leaveRequests: results });
   });
 });
 
-
-
-
-// In your router file (e.g., routes.js or api.js)
 router.get('/leave-requests-emp', (req, res) => {
-  const emailId = req.query.emailId;  // Get the emailId from the query parameter
+  const emailId = req.query.emailId;
   const sql = 'SELECT * FROM all_leaves WHERE emailId = ?';
 
   db.query(sql, [emailId], (err, result) => {
@@ -411,20 +646,14 @@ router.get('/leave-requests-emp', (req, res) => {
   });
 });
 
-
-
-
-
-// Handle DELETE request for leave cancellation by email
 router.delete('/leave-requests-del', (req, res) => {
   const email = req.query.emailId;
-  const id = parseInt(req.query.id, 10); // Convert to number
+  const id = parseInt(req.query.id, 10);
 
   if (!email || isNaN(id)) {
     return res.status(400).json({ error: 'Valid Email and Leave ID are required' });
   }
 
-  // Step 1: Get leave details
   const getLeaveQuery = `
     SELECT DATEDIFF(toDate, fromDate) + 1 AS number_of_days
     FROM all_leaves 
@@ -443,7 +672,6 @@ router.delete('/leave-requests-del', (req, res) => {
 
     const number_of_days = results[0].number_of_days;
 
-    // Step 2: Restore leave balance
     const restoreQuery = `
       UPDATE users 
       SET remaining_leaves = remaining_leaves + ? 
@@ -456,7 +684,6 @@ router.delete('/leave-requests-del', (req, res) => {
         return res.status(500).json({ error: 'Failed to restore leave balance' });
       }
 
-      // Step 3: Delete leave request
       const deleteQuery = `DELETE FROM all_leaves WHERE emailId = ? AND id = ?`;
 
       db.query(deleteQuery, [email, id], (err, result) => {
@@ -475,30 +702,13 @@ router.delete('/leave-requests-del', (req, res) => {
   });
 });
 
-
-// Leave POST route
-// router.post('/update-leave-status', (req, res) => {
-//   const { leaveId, status } = req.body;
-//   const query = 'UPDATE all_leaves SET status = ? WHERE id = ?';
-//   db.query(query, [status, leaveId], (err, result) => {
-//     if (err) {
-//       return res.status(500).json({ message: 'Error updating leave status' });
-//     }
-//     res.json({ message: 'Leave status updated successfully' });
-//   });
-// });
-
-
-
 router.post('/update-leave-status', (req, res) => {
   const { leaveId, status } = req.body;
 
-  // Validate status
   if (status !== 'Approved' && status !== 'Rejected') {
     return res.status(400).send({ message: 'Invalid status' });
   }
 
-  // Step 1: Get leave details (email, duration, and current status)
   const getLeaveQuery = `
     SELECT emailId, DATEDIFF(toDate, fromDate) + 1 AS number_of_days, status AS currentStatus
     FROM all_leaves 
@@ -517,12 +727,10 @@ router.post('/update-leave-status', (req, res) => {
 
     const { emailId, number_of_days, currentStatus } = results[0];
 
-    // Prevent re-processing already final statuses
     if (currentStatus === status) {
       return res.status(400).send({ message: `Leave is already ${status.toLowerCase()}` });
     }
 
-    // Step 2: Update leave status
     const updateLeaveQuery = `UPDATE all_leaves SET status = ? WHERE id = ?`;
 
     db.query(updateLeaveQuery, [status, leaveId], (err) => {
@@ -531,7 +739,6 @@ router.post('/update-leave-status', (req, res) => {
         return res.status(500).send({ message: 'Failed to update leave status' });
       }
 
-      // Step 3: If rejected, restore leave balance
       if (status === 'Rejected') {
         const updateUserLeaves = `
           UPDATE users 
@@ -558,10 +765,6 @@ router.post('/update-leave-status', (req, res) => {
   });
 });
 
-
-
-
-
 router.get('/get-approved-leaves', (req, res) => {
   const query = 'SELECT * FROM all_leaves WHERE status = "Approved"';
   db.query(query, (err, results) => {
@@ -573,10 +776,8 @@ router.get('/get-approved-leaves', (req, res) => {
   });
 });
 
-
-// Node.js route to fetch rejected leaves
 router.get('/get-rejected-leaves', (req, res) => {
-  const query = 'SELECT * FROM all_leaves WHERE status = "Rejected"'; // Modify as needed
+  const query = 'SELECT * FROM all_leaves WHERE status = "Rejected"';
   db.query(query, (err, results) => {
     if (err) {
       return res.status(500).json({ message: 'Failed to retrieve rejected leaves' });
@@ -585,8 +786,6 @@ router.get('/get-rejected-leaves', (req, res) => {
   });
 });
 
-
-// GET /api/employee-profiles/email/:email
 router.get('/employee-profiles/email/:email', (req, res) => {
   const email = req.params.email;
 
@@ -604,37 +803,34 @@ router.get('/employee-profiles/email/:email', (req, res) => {
     const result = results[0];
 
     const formatted = {
-  employeeId: result.employee_id,
-  name: result.name,
-  contactNo: result.contact_no,
-  alternateContact: result.alternate_contact,
-  emergencyContact: result.emergency_contact,
-  email: result.email,
-  bloodGroup: result.blood_group,
-  dob: result.dob,
-  doj: result.doj,
-  aadharNumber: result.aadhar_number,
-  panNumber: result.pan_number,
-  permanentAddress: result.permanent_address,
-  currentAddress: result.current_address,
-  jobRole: result.job_role,
-  department: result.department,
-  profileImage: result.profile_image,
-  documents: [
-  { documentType: 'Aadhar Card', documentPath: result.aadhar_card },
-  { documentType: 'PAN Card', documentPath: result.pan_card },
-  { documentType: 'Salary Slip', documentPath: result.salary_slips },
-  { documentType: 'Education Certificate', documentPath: result.educational_certificates },
-  { documentType: 'Experience Letter', documentPath: result.experience_letters }
-].filter(doc => doc.documentPath)
-};
+      employeeId: result.employee_id,
+      name: result.name,
+      contactNo: result.contact_no,
+      alternateContact: result.alternate_contact,
+      emergencyContact: result.emergency_contact,
+      email: result.email,
+      bloodGroup: result.blood_group,
+      dob: result.dob,
+      doj: result.doj,
+      aadharNumber: result.aadhar_number,
+      panNumber: result.pan_number,
+      permanentAddress: result.permanent_address,
+      currentAddress: result.current_address,
+      jobRole: result.job_role,
+      department: result.department,
+      profileImage: result.profile_image,
+      documents: [
+        { documentType: 'Aadhar Card', documentPath: result.aadhar_card },
+        { documentType: 'PAN Card', documentPath: result.pan_card },
+        { documentType: 'Salary Slip', documentPath: result.salary_slips },
+        { documentType: 'Education Certificate', documentPath: result.educational_certificates },
+        { documentType: 'Experience Letter', documentPath: result.experience_letters }
+      ].filter(doc => doc.documentPath)
+    };
 
-res.json({ success: true, data: formatted });
-
+    res.json({ success: true, data: formatted });
   });
 });
-
-
 
 router.get('/users', (req, res) => {
   db.query('SELECT * FROM users', (err, result) => {
@@ -643,7 +839,6 @@ router.get('/users', (req, res) => {
   });
 });
 
-// DELETE user by email
 router.delete('/users/:email', (req, res) => {
   const email = req.params.email;
   db.query('DELETE FROM users WHERE email = ?', [email], (err, result) => {
@@ -655,12 +850,6 @@ router.delete('/users/:email', (req, res) => {
   });
 });
 
-
-
-
-
-
-// Update user session status
 router.post('/update-session-status', (req, res) => {
   const { email, status } = req.body;
 
@@ -691,11 +880,6 @@ router.post('/update-session-status', (req, res) => {
   });
 });
 
-
-
-
-
-
 router.get('/remaining-leaves', (req, res) => {
   const email = req.query.emailId;
 
@@ -724,9 +908,6 @@ router.get('/remaining-leaves', (req, res) => {
   });
 });
 
-
-
-// Update remaining leaves after leave submission
 router.post('/update-leave-balance', (req, res) => {
   const { email, days } = req.body;
 
@@ -743,7 +924,6 @@ router.post('/update-leave-balance', (req, res) => {
     }
 
     if (results.length > 0) {
-      // Update existing record
       const updateSql = `
         UPDATE users 
         SET remaining_leaves = remaining_leaves - ? 
@@ -763,7 +943,6 @@ router.post('/update-leave-balance', (req, res) => {
         res.json({ success: true });
       });
     } else {
-      // Insert new record with initial balance 15 - days
       const insertSql = `
         INSERT INTO users (email, remaining_leaves)
         VALUES (?, 15 - ?)
@@ -781,12 +960,8 @@ router.post('/update-leave-balance', (req, res) => {
   });
 });
 
-
-
-
 // ==================== ASSET MANAGEMENT APIs ====================
 
-// Get all assets with filtering
 router.get('/assets', (req, res) => {
   const { 
     search, status, type, brand, vendor, emp_email, 
@@ -815,49 +990,41 @@ router.get('/assets', (req, res) => {
 
   let params = [];
 
-  // ✅ Search filter
   if (search) {
     sql += ` AND (a.asset_id LIKE ? OR a.name LIKE ? OR a.model LIKE ? OR a.allocated_to LIKE ?)`;
     const searchTerm = `%${search}%`;
     params.push(searchTerm, searchTerm, searchTerm, searchTerm);
   }
 
-  // ✅ Filter by status
   if (status && status !== '') {
     sql += ` AND a.status = ?`;
     params.push(status);
   }
 
-  // ✅ Filter by type
   if (type && type !== '') {
     sql += ` AND a.type = ?`;
     params.push(type);
   }
 
-  // ✅ Filter by brand
   if (brand && brand !== '') {
     sql += ` AND a.brand = ?`;
     params.push(brand);
   }
 
-  // ✅ Filter by vendor
   if (vendor && vendor !== '') {
     sql += ` AND a.vendor = ?`;
     params.push(vendor);
   }
 
-  // ✅ NEW: Filter by emp_email
   if (emp_email && emp_email !== '') {
     sql += ` AND a.emp_email = ?`;
     params.push(emp_email);
   }
 
-  // ✅ Pagination
   const offset = (page - 1) * limit;
   sql += ` ORDER BY a.created_at DESC LIMIT ? OFFSET ?`;
   params.push(parseInt(limit), offset);
 
-  // ✅ Count query for pagination
   let countSql = `SELECT COUNT(*) as total FROM assets a WHERE 1=1`;
   let countParams = [];
 
@@ -887,7 +1054,6 @@ router.get('/assets', (req, res) => {
     countParams.push(vendor);
   }
 
-  // ✅ NEW: emp_email in count query
   if (emp_email && emp_email !== '') {
     countSql += ` AND a.emp_email = ?`;
     countParams.push(emp_email);
@@ -921,9 +1087,6 @@ router.get('/assets', (req, res) => {
   });
 });
 
-
-// Get next incremental asset ID
-
 router.get('/assets/next-id', (req, res) => {
   const year = new Date().getFullYear();
   const prefix = `AID${year}`;
@@ -946,7 +1109,7 @@ router.get('/assets/next-id', (req, res) => {
     res.json({ success: true, data: { nextId } });
   });
 });
-// Get asset by ID
+
 router.get('/assets/:id', (req, res) => {
   const { id } = req.params;
   
@@ -975,9 +1138,8 @@ router.get('/assets/:id', (req, res) => {
   });
 });
 
-// Create new asset (auto-generate asset_id if not provided)
-
-router.post('/assets', (req, res) => {
+// Enhanced asset creation with activity logging
+router.post('/assets', async (req, res) => {
   let {
     asset_id,
     serial_number,
@@ -996,8 +1158,7 @@ router.post('/assets', (req, res) => {
     reason
   } = req.body;
 
-  // ✅ Insert asset into the database
-  const insert = (finalAssetId, emp_email) => {
+  const insert = async (finalAssetId, emp_email, emp_name) => {
     const sql = `
       INSERT INTO assets (
         asset_id, serial_no, name, type, brand, model, status, allocated_to, 
@@ -1025,13 +1186,37 @@ router.post('/assets', (req, res) => {
       emp_email
     ];
 
-    db.query(sql, values, (err, results) => {
+    db.query(sql, values, async (err, results) => {
       if (err) {
         console.error('Error creating asset:', err);
         if (err.code === 'ER_DUP_ENTRY') {
           return res.status(409).json({ success: false, message: 'Asset ID already exists' });
         }
         return res.status(500).json({ success: false, message: 'Server error while inserting asset' });
+      }
+
+      if (allocated_to && emp_email) {
+        try {
+          await createActivityLog({
+            employee_id: allocated_to,
+            employee_email: emp_email,
+            employee_name: emp_name,
+            action_type: 'asset_allocated',
+            action_description: `Asset ${finalAssetId} (${name}) allocated`,
+            asset_id: finalAssetId,
+            performed_by: 'HR',
+            performed_by_name: 'HR Team',
+            additional_data: {
+              asset_name: name,
+              asset_type: type,
+              brand: brand,
+              model: model,
+              status: status
+            }
+          });
+        } catch (logError) {
+          console.error('Failed to create activity log for asset allocation:', logError);
+        }
       }
 
       res.status(201).json({
@@ -1042,10 +1227,9 @@ router.post('/assets', (req, res) => {
     });
   };
 
-  // ✅ Generate asset ID if not provided
-  const proceed = (emp_email) => {
+  const proceed = (emp_email, emp_name) => {
     if (asset_id) {
-      return insert(asset_id, emp_email);
+      return insert(asset_id, emp_email, emp_name);
     }
 
     const year = new Date().getFullYear();
@@ -1064,22 +1248,20 @@ router.post('/assets', (req, res) => {
 
       const seq = results[0]?.seq || '0001';
       const nextId = `${prefix}${seq}`;
-      insert(nextId, emp_email);
+      insert(nextId, emp_email, emp_name);
     });
   };
 
-  // ✅ Validate allocated_to
   if (!allocated_to) {
     return res.status(400).json({ success: false, message: 'allocated_to (employee_id) is required' });
   }
 
-  // ✅ Get employee email from users table
-  const getEmailSql = `SELECT email FROM users WHERE employee_id = ?`;
+  const getEmployeeSql = `SELECT email, name FROM users WHERE employee_id = ?`;
 
-  db.query(getEmailSql, [allocated_to], (err, results) => {
+  db.query(getEmployeeSql, [allocated_to], (err, results) => {
     if (err) {
-      console.error('Error fetching user email:', err);
-      return res.status(500).json({ success: false, message: 'Server error while fetching user email' });
+      console.error('Error fetching user details:', err);
+      return res.status(500).json({ success: false, message: 'Server error while fetching user details' });
     }
 
     if (results.length === 0) {
@@ -1088,12 +1270,11 @@ router.post('/assets', (req, res) => {
     }
 
     const emp_email = results[0].email;
-    proceed(emp_email); // 👉 Proceed to asset creation
+    const emp_name = results[0].name;
+    proceed(emp_email, emp_name);
   });
 });
 
-
-// Update asset
 router.put('/assets/:id', (req, res) => {
   const { id } = req.params;
   const {
@@ -1112,7 +1293,6 @@ router.put('/assets/:id', (req, res) => {
     reason
   } = req.body;
 
-  // Step 1: Get email from users table using allocated_to
   const getEmailSql = `SELECT email FROM users WHERE employee_id = ?`;
 
   db.query(getEmailSql, [allocated_to], (err, results) => {
@@ -1127,7 +1307,6 @@ router.put('/assets/:id', (req, res) => {
 
     const emp_email = results[0].email;
 
-    // Step 2: Update the asset with the new info and employee email
     const updateSql = `
       UPDATE assets SET 
         name = ?, type = ?, brand = ?, model = ?, status = ?, 
@@ -1151,7 +1330,7 @@ router.put('/assets/:id', (req, res) => {
       purchase_cost,
       reason || null,
       emp_email,
-      id // WHERE asset_id = ?
+      id
     ];
 
     db.query(updateSql, values, (err, results) => {
@@ -1169,8 +1348,6 @@ router.put('/assets/:id', (req, res) => {
   });
 });
 
-
-// Delete asset
 router.delete('/assets/:id', (req, res) => {
   const { id } = req.params;
 
@@ -1190,7 +1367,6 @@ router.delete('/assets/:id', (req, res) => {
   });
 });
 
-// Get filter options
 router.get('/assets/filters/options', (req, res) => {
   const queries = [
     'SELECT DISTINCT status as value FROM assets WHERE status IS NOT NULL',
@@ -1226,7 +1402,6 @@ router.get('/assets/filters/options', (req, res) => {
 
 // ==================== VENDOR MANAGEMENT APIs ====================
 
-// Get all vendors
 router.get('/vendors', (req, res) => {
   const sql = 'SELECT * FROM vendors ORDER BY name';
 
@@ -1240,7 +1415,6 @@ router.get('/vendors', (req, res) => {
   });
 });
 
-// Create new vendor
 router.post('/vendors', (req, res) => {
   const { name, contact_person, email, phone, address } = req.body;
 
@@ -1266,7 +1440,6 @@ router.post('/vendors', (req, res) => {
   });
 });
 
-// Update vendor
 router.put('/vendors/:id', (req, res) => {
   const { id } = req.params;
   const { name, contact_person, email, phone, address } = req.body;
@@ -1291,11 +1464,9 @@ router.put('/vendors/:id', (req, res) => {
   });
 });
 
-// Delete vendor
 router.delete('/vendors/:id', (req, res) => {
   const { id } = req.params;
 
-  // Check if vendor is used in assets
   const checkSql = 'SELECT COUNT(*) as count FROM assets WHERE vendor IN (SELECT name FROM vendors WHERE id = ?)';
   
   db.query(checkSql, [id], (err, results) => {
@@ -1328,138 +1499,92 @@ router.delete('/vendors/:id', (req, res) => {
   });
 });
 
-// ==================== ASSET ALLOCATION APIs ====================
+// ==================== ENHANCED TICKET MANAGEMENT APIS ====================
 
-// Allocate asset to employee
-router.post('/assets/:id/allocate', (req, res) => {
-  const { id } = req.params;
-  const { allocated_to, notes } = req.body;
+router.get('/maintenance_tickets', (req, res) => {
+  const { reported_by } = req.query;
 
-  // Start transaction
-  db.beginTransaction(err => {
-    if (err) {
-      console.error('Error starting transaction:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
+  if (!reported_by) {
+    return res.status(400).json({ success: false, message: 'Missing reported_by email' });
+  }
 
-    // Update asset status
-    const updateAssetSql = 'UPDATE assets SET status = "Allocated", allocated_to = ? WHERE asset_id = ? OR id = ?';
-    
-    db.query(updateAssetSql, [allocated_to, id, id], (err, results) => {
-      if (err) {
-        return db.rollback(() => {
-          console.error('Error updating asset:', err);
-          res.status(500).json({ success: false, message: 'Server error' });
-        });
-      }
-
-      if (results.affectedRows === 0) {
-        return db.rollback(() => {
-          res.status(404).json({ success: false, message: 'Asset not found' });
-        });
-      }
-
-      // Add to allocation history
-      const historySql = `
-        INSERT INTO asset_allocation_history (asset_id, allocated_to, allocated_date, notes)
-        VALUES (?, ?, CURDATE(), ?)
-      `;
-
-      db.query(historySql, [id, allocated_to, notes], (err, results) => {
-        if (err) {
-          return db.rollback(() => {
-            console.error('Error adding to allocation history:', err);
-            res.status(500).json({ success: false, message: 'Server error' });
-          });
-        }
-
-        db.commit(err => {
-          if (err) {
-            return db.rollback(() => {
-              console.error('Error committing transaction:', err);
-              res.status(500).json({ success: false, message: 'Server error' });
-            });
-          }
-
-          res.json({ success: true, message: 'Asset allocated successfully' });
-        });
-      });
-    });
-  });
-});
-
-// Return asset
-router.post('/assets/:id/return', (req, res) => {
-  const { id } = req.params;
-  const { notes } = req.body;
-
-  // Start transaction
-  db.beginTransaction(err => {
-    if (err) {
-      console.error('Error starting transaction:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    // Update asset status
-    const updateAssetSql = 'UPDATE assets SET status = "Available", allocated_to = NULL WHERE asset_id = ? OR id = ?';
-    
-    db.query(updateAssetSql, [id, id], (err, results) => {
-      if (err) {
-        return db.rollback(() => {
-          console.error('Error updating asset:', err);
-          res.status(500).json({ success: false, message: 'Server error' });
-        });
-      }
-
-      if (results.affectedRows === 0) {
-        return db.rollback(() => {
-          res.status(404).json({ success: false, message: 'Asset not found' });
-        });
-      }
-
-      // Update allocation history
-      const historySql = `
-        UPDATE asset_allocation_history 
-        SET returned_date = CURDATE(), notes = CONCAT(IFNULL(notes, ''), ?)
-        WHERE asset_id = ? AND returned_date IS NULL
-      `;
-
-      db.query(historySql, [`\nReturned: ${notes}`, id], (err, results) => {
-        if (err) {
-          return db.rollback(() => {
-            console.error('Error updating allocation history:', err);
-            res.status(500).json({ success: false, message: 'Server error' });
-          });
-        }
-
-        db.commit(err => {
-          if (err) {
-            return db.rollback(() => {
-              console.error('Error committing transaction:', err);
-              res.status(500).json({ success: false, message: 'Server error' });
-            });
-          }
-
-          res.json({ success: true, message: 'Asset returned successfully' });
-        });
-      });
-    });
-  });
-});
-
-// Get allocation history for asset
-router.get('/assets/:id/history', (req, res) => {
-  const { id } = req.params;
-
-  const sql = `
-    SELECT * FROM asset_allocation_history 
-    WHERE asset_id = ? 
-    ORDER BY allocated_date DESC
+  const ticketSql = `
+    SELECT 
+      mt.*,
+      a.model
+    FROM maintenance_tickets mt
+    LEFT JOIN assets a ON mt.asset_id = a.asset_id
+    WHERE mt.reported_by = ?
+    ORDER BY mt.created_at DESC
   `;
 
-  db.query(sql, [id], (err, results) => {
+  db.query(ticketSql, [reported_by], (err, tickets) => {
     if (err) {
-      console.error('Error fetching allocation history:', err);
+      console.error('Error fetching tickets:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (!tickets.length) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const ticketIds = tickets.map(t => t.ticket_id);
+    const placeholders = ticketIds.map(() => '?').join(',');
+
+    const evidenceSql = `
+      SELECT * FROM ticket_evidence
+      WHERE ticket_id IN (${placeholders})
+    `;
+
+    db.query(evidenceSql, ticketIds, (err2, evidence) => {
+      if (err2) {
+        console.error('Error fetching evidence:', err2);
+        return res.status(500).json({ success: false, message: 'Server error' });
+      }
+
+      const evidenceMap = {};
+      evidence.forEach(e => {
+        if (!evidenceMap[e.ticket_id]) evidenceMap[e.ticket_id] = [];
+        evidenceMap[e.ticket_id].push(e);
+      });
+
+      const result = tickets.map(ticket => ({
+        ...ticket,
+        evidence: evidenceMap[ticket.ticket_id] || []
+      }));
+
+      res.json({ success: true, data: result });
+    });
+  });
+});
+
+router.get('/hr-responses', (req, res) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ success: false, message: 'Email is required' });
+  }
+
+  const sql = `
+    SELECT 
+      mt.ticket_id,
+      mt.asset_id,
+      a.model,
+      mt.issue_description as description,
+      mt.status,
+      mt.resolution_notes as hr_response,
+      mt.updated_at as hr_response_date,
+      mt.created_at
+    FROM maintenance_tickets mt
+    LEFT JOIN assets a ON mt.asset_id = a.asset_id
+    WHERE mt.reported_by = ? 
+    AND mt.resolution_notes IS NOT NULL
+    ORDER BY mt.updated_at DESC
+  `;
+
+  db.query(sql, [email], (err, results) => {
+    if (err) {
+      console.error('Error fetching HR responses:', err);
       return res.status(500).json({ success: false, message: 'Server error' });
     }
 
@@ -1467,8 +1592,631 @@ router.get('/assets/:id/history', (req, res) => {
   });
 });
 
+// Enhanced ticket cancellation with logging
+router.delete('/tickets/:ticketId', async (req, res) => {
+  const { ticketId } = req.params;
 
-// Departments and Employees APIs for allocation (based on grp_id in users)
+  if (!ticketId) {
+    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
+  }
+
+  try {
+    const getTicketSql = `
+      SELECT mt.*, u.employee_id, u.name as employee_name
+      FROM maintenance_tickets mt
+      LEFT JOIN users u ON mt.reported_by = u.email
+      WHERE mt.ticket_id = ?
+    `;
+    
+    const ticketResults = await new Promise((resolve, reject) => {
+      db.query(getTicketSql, [ticketId], (err, results) => {
+        if (err) reject(err);
+        else resolve(results);
+      });
+    });
+
+    if (ticketResults.length === 0) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    const ticket = ticketResults[0];
+
+    await logTicketConversation(
+      ticketId,
+      'ticket_cancelled',
+      `Ticket cancelled by employee`,
+      ticket.reported_by,
+      ticket.employee_name,
+      {
+        reason: 'Cancelled by employee',
+        original_issue: ticket.issue_description,
+        status_at_cancellation: ticket.status
+      }
+    );
+
+    db.beginTransaction(async (err) => {
+      if (err) {
+        console.error('Error starting transaction:', err);
+        return res.status(500).json({ success: false, message: 'Server error' });
+      }
+
+      try {
+        await new Promise((resolve, reject) => {
+          const deleteEvidenceSql = 'DELETE FROM ticket_evidence WHERE ticket_id = ?';
+          db.query(deleteEvidenceSql, [ticketId], (err, result) => {
+            if (err) reject(err);
+            else resolve(result);
+          });
+        });
+
+        await new Promise((resolve, reject) => {
+          const deleteTicketSql = 'DELETE FROM maintenance_tickets WHERE ticket_id = ?';
+          db.query(deleteTicketSql, [ticketId], (err, result) => {
+            if (err) reject(err);
+            else if (result.affectedRows === 0) reject(new Error('Ticket not found'));
+            else resolve(result);
+          });
+        });
+
+        db.commit((err) => {
+          if (err) {
+            db.rollback(() => {
+              console.error('Error committing transaction:', err);
+              res.status(500).json({ success: false, message: 'Server error' });
+            });
+          } else {
+            res.json({ success: true, message: 'Ticket cancelled successfully' });
+          }
+        });
+
+      } catch (deleteError) {
+        db.rollback(() => {
+          console.error('Error during deletion:', deleteError);
+          res.status(500).json({ success: false, message: 'Error cancelling ticket' });
+        });
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in ticket cancellation:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Get ticket conversation history
+router.get('/tickets/:ticketId/conversation', (req, res) => {
+  const { ticketId } = req.params;
+
+  if (!ticketId) {
+    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
+  }
+
+  const sql = `
+    SELECT 
+      al.*,
+      DATE_FORMAT(al.created_at, '%Y-%m-%d %H:%i:%s') as formatted_date
+    FROM activity_logs al
+    WHERE al.ticket_id = ?
+    ORDER BY al.created_at ASC
+  `;
+
+  db.query(sql, [ticketId], (err, results) => {
+    if (err) {
+      console.error('Error fetching ticket conversation:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    const conversation = results.map(log => ({
+      id: log.id,
+      timestamp: log.created_at,
+      action_type: log.action_type,
+      message: log.action_description,
+      performed_by: log.performed_by,
+      performed_by_name: log.performed_by_name,
+      additional_data: log.additional_data ? JSON.parse(log.additional_data) : null,
+      is_hr: log.performed_by === 'HR' || log.performed_by_name === 'HR Team'
+    }));
+
+    res.json({ success: true, data: conversation });
+  });
+});
+
+router.get('/ticket-logs/:ticketId', (req, res) => {
+  const { ticketId } = req.params;
+
+  if (!ticketId) {
+    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
+  }
+
+  const ticketSql = `
+    SELECT 
+      mt.*,
+      a.model,
+      a.name as asset_name
+    FROM maintenance_tickets mt
+    LEFT JOIN assets a ON mt.asset_id = a.asset_id
+    WHERE mt.ticket_id = ?
+  `;
+
+  db.query(ticketSql, [ticketId], (err, ticketResults) => {
+    if (err) {
+      console.error('Error fetching ticket details:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (ticketResults.length === 0) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    const ticket = ticketResults[0];
+
+    const evidenceSql = 'SELECT * FROM ticket_evidence WHERE ticket_id = ? ORDER BY uploaded_at DESC';
+    
+    db.query(evidenceSql, [ticketId], (err, evidenceResults) => {
+      if (err) {
+        console.error('Error fetching ticket evidence:', err);
+        return res.status(500).json({ success: false, message: 'Server error' });
+      }
+
+      const activities = [];
+
+      activities.push({
+        date: ticket.created_at,
+        user: ticket.reported_by,
+        message: `Ticket created: ${ticket.issue_description}`,
+        type: 'created',
+        attachments: evidenceResults.map(e => e.file_path)
+      });
+
+      if (ticket.resolution_notes) {
+        activities.push({
+          date: ticket.updated_at,
+          user: 'HR Team',
+          message: ticket.resolution_notes,
+          type: 'response',
+          attachments: []
+        });
+      }
+
+      res.json({ success: true, data: activities });
+    });
+  });
+});
+
+router.get('/tickets/next-id', (req, res) => {
+  const year = new Date().getFullYear();
+  const prefix = `TID${year}`;
+  
+  const sql = `
+    SELECT LPAD(COALESCE(MAX(CAST(SUBSTRING(ticket_id, 8) AS UNSIGNED)), 0) + 1, 4, '0') AS seq
+    FROM maintenance_tickets
+    WHERE ticket_id LIKE ?
+  `;
+
+  db.query(sql, [`${prefix}%`], (err, results) => {
+    if (err) {
+      console.error('Error fetching next ticket id:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    const seq = results[0]?.seq || '0001';
+    const nextId = `${prefix}${seq}`;
+    
+    res.json({ success: true, data: { nextId } });
+  });
+});
+
+// ==================== HR TICKET MANAGEMENT ====================
+
+router.get('/hr/tickets', (req, res) => {
+  const { status, page = 1, limit = 20 } = req.query;
+
+  let sql = `
+    SELECT 
+      mt.ticket_id,
+      mt.asset_id,
+      mt.reported_by,
+      mt.issue_description,
+      mt.status,
+      mt.priority,
+      mt.created_at,
+      mt.assigned_to,
+      mt.resolution_notes,
+      mt.updated_at,
+      a.model as asset_model,
+      a.name as asset_name,
+      u.name as employee_name,
+      u.employee_id
+    FROM maintenance_tickets mt
+    LEFT JOIN assets a ON mt.asset_id = a.asset_id
+    LEFT JOIN users u ON mt.reported_by = u.email
+    WHERE 1=1
+  `;
+
+  let params = [];
+
+  if (status && status !== 'all') {
+    sql += ` AND mt.status = ?`;
+    params.push(status);
+  }
+
+  sql += ` ORDER BY mt.created_at DESC`;
+
+  const offset = (page - 1) * limit;
+  sql += ` LIMIT ? OFFSET ?`;
+  params.push(parseInt(limit), offset);
+
+  db.query(sql, params, (err, tickets) => {
+    if (err) {
+      console.error('Error fetching tickets for HR:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (tickets.length > 0) {
+      const ticketIds = tickets.map(t => t.ticket_id);
+      const placeholders = ticketIds.map(() => '?').join(',');
+
+      const evidenceSql = `
+        SELECT ticket_id, file_type, file_path, uploaded_at
+        FROM ticket_evidence
+        WHERE ticket_id IN (${placeholders})
+        ORDER BY uploaded_at DESC
+      `;
+
+      db.query(evidenceSql, ticketIds, (err2, evidence) => {
+        if (err2) {
+          console.error('Error fetching evidence:', err2);
+          const result = tickets.map(ticket => ({
+            ...ticket,
+            evidence: []
+          }));
+          return res.json({ success: true, data: result });
+        }
+
+        const evidenceMap = {};
+        evidence.forEach(e => {
+          if (!evidenceMap[e.ticket_id]) evidenceMap[e.ticket_id] = [];
+          evidenceMap[e.ticket_id].push({
+            file_type: e.file_type,
+            file_path: e.file_path,
+            updated_at: e.updated_at
+          });
+        });
+
+        const result = tickets.map(ticket => ({
+          ...ticket,
+          evidence: evidenceMap[ticket.ticket_id] || []
+        }));
+
+        res.json({ success: true, data: result });
+      });
+    } else {
+      res.json({ success: true, data: [] });
+    }
+  });
+});
+
+router.get('/hr/ticket-stats', (req, res) => {
+  const statsSql = `
+    SELECT 
+      status,
+      COUNT(*) as count
+    FROM maintenance_tickets
+    GROUP BY status
+  `;
+
+  db.query(statsSql, (err, results) => {
+    if (err) {
+      console.error('Error fetching ticket stats:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    const stats = {
+      open: 0,
+      'under review': 0,
+      escalated: 0,
+      closed: 0,
+      total: 0
+    };
+
+    results.forEach(row => {
+      const status = row.status.toLowerCase();
+      stats[status] = row.count;
+      stats.total += row.count;
+    });
+
+    res.json({ success: true, data: stats });
+  });
+});
+
+// Enhanced HR ticket response with comprehensive logging
+router.put('/hr/tickets/:ticketId', async (req, res) => {
+  const { ticketId } = req.params;
+  const { 
+    status, 
+    hrResponse, 
+    informationRequest, 
+    assignedTo 
+  } = req.body;
+
+  if (!ticketId) {
+    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
+  }
+
+  try {
+    const getTicketSql = `
+      SELECT mt.*, u.employee_id, u.name as employee_name, u.email as employee_email
+      FROM maintenance_tickets mt
+      LEFT JOIN users u ON mt.reported_by = u.email
+      WHERE mt.ticket_id = ?
+    `;
+    
+    const ticketResults = await new Promise((resolve, reject) => {
+      db.query(getTicketSql, [ticketId], (err, results) => {
+        if (err) reject(err);
+        else resolve(results);
+      });
+    });
+
+    if (ticketResults.length === 0) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    const currentTicket = ticketResults[0];
+
+    let updateFields = [];
+    let updateValues = [];
+    let logActions = [];
+
+    if (status && status !== currentTicket.status) {
+      updateFields.push('status = ?');
+      updateValues.push(status);
+      logActions.push({
+        type: 'status_updated',
+        description: `Ticket status changed from "${currentTicket.status}" to "${status}"`,
+        data: { old_status: currentTicket.status, new_status: status }
+      });
+    }
+
+    if (hrResponse && hrResponse.trim()) {
+      updateFields.push('resolution_notes = ?');
+      updateValues.push(hrResponse.trim());
+      logActions.push({
+        type: 'hr_response',
+        description: `HR responded: "${hrResponse.trim()}"`,
+        data: { response: hrResponse.trim() }
+      });
+    }
+
+    if (informationRequest && informationRequest.trim()) {
+      logActions.push({
+        type: 'information_request',
+        description: `HR requested more information: "${informationRequest.trim()}"`,
+        data: { request: informationRequest.trim() }
+      });
+    }
+
+    if (assignedTo && assignedTo !== currentTicket.assigned_to) {
+      updateFields.push('assigned_to = ?');
+      updateValues.push(assignedTo);
+      logActions.push({
+        type: 'ticket_assigned',
+        description: `Ticket assigned to ${assignedTo}`,
+        data: { assigned_to: assignedTo, previous_assignee: currentTicket.assigned_to }
+      });
+    }
+
+    updateFields.push('updated_at = ?');
+    updateValues.push(new Date());
+
+    if (updateFields.length === 1) {
+      return res.status(400).json({ success: false, message: 'No updates provided' });
+    }
+
+    const updateSql = `
+      UPDATE maintenance_tickets 
+      SET ${updateFields.join(', ')}
+      WHERE ticket_id = ?
+    `;
+
+    updateValues.push(ticketId);
+
+    await new Promise((resolve, reject) => {
+      db.query(updateSql, updateValues, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
+
+    // 🔹 Process all log actions (ticket_conversations + activity_logs)
+    for (const action of logActions) {
+      try {
+        // Ticket conversation log
+        await logTicketConversation(
+          ticketId,
+          action.type,
+          action.description,
+          'HR',
+          'HR Team',
+          action.data
+        );
+
+        // Activity log entry
+        const insertActivitySql = `
+          INSERT INTO activity_logs (
+            employee_email, employee_id, employee_name,
+            action_type, action_description,
+            asset_id, ticket_id,
+            performed_by, performed_by_name,
+            created_at, additional_data
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        // const activityData = [
+        //   currentTicket.employee_email,
+        //   currentTicket.employee_id,
+        //   currentTicket.employee_name,
+        //   action.type,
+        //   action.description,
+        //   currentTicket.asset_id,
+        //   ticketId,
+        //   'HR',
+        //   'HR Team',
+        //   new Date(),
+        //   JSON.stringify(action.data || {})
+        // ];
+
+        db.query(insertActivitySql, activityData, (err2) => {
+          if (err2) {
+            console.error('Error inserting activity log:', err2);
+          }
+        });
+      } catch (logError) {
+        console.error('Error logging action:', action.type, logError);
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Ticket updated successfully',
+      data: { 
+        ticketId, 
+        status, 
+        hrResponse, 
+        informationRequest,
+        updatedAt: new Date()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating ticket:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+
+// ==================== ACTIVITY LOGS ====================
+
+router.post("/activity-logs", async (req, res) => {
+  try {
+    const logData = req.body;
+
+    if (!logData.action_type || !logData.action_description || !logData.performed_by || !logData.performed_by_name) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const result = await createActivityLog(logData);
+    res.status(201).json({
+      message: "Activity log created successfully",
+      log_id: result.insertId,
+    });
+  } catch (err) {
+    console.error("Error creating activity log:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get('/hr/activity-logs', (req, res) => {
+  const { 
+    employee_name, 
+    employee_id, 
+    start_date, 
+    end_date, 
+    page = 1, 
+    limit = 20,
+    group_by = 'employee' 
+  } = req.query;
+
+  let sql = `
+    SELECT 
+      al.*,
+      DATE(al.created_at) as log_date
+    FROM activity_logs al
+    WHERE 1=1
+  `;
+  
+  let params = [];
+
+  if (employee_name && employee_name.trim()) {
+    sql += ` AND al.employee_name LIKE ?`;
+    params.push(`%${employee_name.trim()}%`);
+  }
+
+  if (employee_id && employee_id.trim()) {
+    sql += ` AND al.employee_id LIKE ?`;
+    params.push(`%${employee_id.trim()}%`);
+  }
+
+  if (start_date) {
+    sql += ` AND DATE(al.created_at) >= ?`;
+    params.push(start_date);
+  }
+
+  if (end_date) {
+    sql += ` AND DATE(al.created_at) <= ?`;
+    params.push(end_date);
+  }
+
+  sql += ` ORDER BY al.created_at DESC`;
+
+  const offset = (page - 1) * limit;
+  sql += ` LIMIT ? OFFSET ?`;
+  params.push(parseInt(limit), offset);
+
+  db.query(sql, params, (err, results) => {
+    if (err) {
+      console.error('Error fetching activity logs for HR:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (group_by === 'employee') {
+      const groupedLogs = {};
+      results.forEach(log => {
+        const key = `${log.employee_id || 'unknown'}-${log.employee_email || 'unknown'}`;
+        if (!groupedLogs[key]) {
+          groupedLogs[key] = {
+            employee_id: log.employee_id,
+            employee_email: log.employee_email,
+            employee_name: log.employee_name,
+            activities: []
+          };
+        }
+        groupedLogs[key].activities.push(log);
+      });
+
+      const groupedResults = Object.values(groupedLogs);
+      res.json({ success: true, data: groupedResults, grouped: true });
+    } else {
+      res.json({ success: true, data: results, grouped: false });
+    }
+  });
+});
+
+router.get('/employee/activity-logs', (req, res) => {
+  const { employee_email } = req.query;
+
+  if (!employee_email) {
+    return res.status(400).json({ success: false, message: 'Employee email is required' });
+  }
+
+  const sql = `
+    SELECT * FROM activity_logs 
+    WHERE employee_email = ?
+    ORDER BY created_at DESC
+  `;
+
+  db.query(sql, [employee_email], (err, results) => {
+    if (err) {
+      console.error('Error fetching employee activity logs:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    res.json({ success: true, data: results });
+  });
+});
+
+// ==================== DEPARTMENT AND EMPLOYEE ROUTES ====================
+
 router.get('/departments', (req, res) => {
   const GROUP_MAP = {
     1: 'Admin',
@@ -1519,1261 +2267,5 @@ router.get('/employees/by-group', (req, res) => {
   });
 });
 
-
-
-// Fixed /raise-ticket route in your backend
-// Fixed /raise-ticket route that works with current database schema
-// Complete fixed /raise-ticket route with proper ticket ID generation
-router.post('/raise-ticket', upload.array('files', 5), (req, res) => {
-  try {
-    const {
-      asset_id,
-      reported_by,
-      issue_description,
-      priority = 'Medium'
-    } = req.body;
-
-    // Validate required fields
-    if (!asset_id) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Asset ID is required' 
-      });
-    }
-
-    if (!reported_by) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Reporter email is required' 
-      });
-    }
-
-    if (!issue_description) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Issue description is required' 
-      });
-    }
-
-    // Generate ticket ID in format TID{YEAR}{Sequential Number}
-    const year = new Date().getFullYear();
-    const prefix = `TID${year}`;
-    
-    // Get next sequential number for this year
-    const getNextTicketIdSql = `
-      SELECT LPAD(COALESCE(MAX(CAST(SUBSTRING(ticket_id, 8) AS UNSIGNED)), 0) + 1, 4, '0') AS seq
-      FROM maintenance_tickets
-      WHERE ticket_id LIKE ?
-    `;
-
-    db.query(getNextTicketIdSql, [`${prefix}%`], (err, results) => {
-      if (err) {
-        console.error('Error generating ticket ID:', err);
-        return res.status(500).json({ 
-          success: false, 
-          message: 'Error generating ticket ID' 
-        });
-      }
-
-      const seq = results[0]?.seq || '0001';
-      const ticket_id = `${prefix}${seq}`;
-      const created_at = new Date();
-
-      // Insert into maintenance_tickets table
-      const insertTicketSql = `
-        INSERT INTO maintenance_tickets (
-          ticket_id, asset_id, reported_by, issue_description, status, priority, created_at
-        ) VALUES (?, ?, ?, ?, 'Open', ?, ?)
-      `;
-
-      const ticketValues = [
-        ticket_id, 
-        asset_id, 
-        reported_by, 
-        issue_description, 
-        priority, 
-        created_at
-      ];
-
-      db.query(insertTicketSql, ticketValues, (err, result) => {
-        if (err) {
-          console.error('Error inserting ticket:', err);
-          return res.status(500).json({ 
-            success: false, 
-            message: 'Failed to create ticket in database' 
-          });
-        }
-
-        // If files are uploaded, save them to ticket_evidence table
-        if (req.files && req.files.length > 0) {
-          const evidenceValues = req.files.map(file => [
-            ticket_id,
-            file.mimetype.startsWith('video') ? 'video' : 'image',
-            file.filename,
-            new Date()
-          ]);
-
-          const insertEvidenceSql = `
-            INSERT INTO ticket_evidence (ticket_id, file_type, file_path, uploaded_at)
-            VALUES ?
-          `;
-
-          db.query(insertEvidenceSql, [evidenceValues], (err2) => {
-            if (err2) {
-              console.error('Error saving ticket evidence:', err2);
-              return res.json({ 
-                success: true, 
-                message: 'Ticket created successfully but failed to save evidence.',
-                data: { ticket_id }
-              });
-            }
-
-            return res.json({ 
-              success: true, 
-              message: 'Ticket and evidence saved successfully.',
-              data: { ticket_id }
-            });
-          });
-        } else {
-          return res.json({ 
-            success: true, 
-            message: 'Ticket raised successfully.',
-            data: { ticket_id }
-          });
-        }
-      });
-    });
-
-  } catch (error) {
-    console.error('Unexpected error in raise-ticket:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error' 
-    });
-  }
-});
-
-// Updated /maintenance_tickets route to JOIN with assets table to get model
-router.get('/maintenance_tickets', (req, res) => {
-  const { reported_by } = req.query;
-
-  if (!reported_by) {
-    return res.status(400).json({ success: false, message: 'Missing reported_by email' });
-  }
-
-  // Updated query to JOIN with assets table to get the model
-  const ticketSql = `
-    SELECT 
-      mt.*,
-      a.model
-    FROM maintenance_tickets mt
-    LEFT JOIN assets a ON mt.asset_id = a.asset_id
-    WHERE mt.reported_by = ?
-    ORDER BY mt.created_at DESC
-  `;
-
-  db.query(ticketSql, [reported_by], (err, tickets) => {
-    if (err) {
-      console.error('Error fetching tickets:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    if (!tickets.length) {
-      return res.json({ success: true, data: [] });
-    }
-
-    // Get all related evidence
-    const ticketIds = tickets.map(t => t.ticket_id);
-    const placeholders = ticketIds.map(() => '?').join(',');
-
-    const evidenceSql = `
-      SELECT * FROM ticket_evidence
-      WHERE ticket_id IN (${placeholders})
-    `;
-
-    db.query(evidenceSql, ticketIds, (err2, evidence) => {
-      if (err2) {
-        console.error('Error fetching evidence:', err2);
-        return res.status(500).json({ success: false, message: 'Server error' });
-      }
-
-      // Group evidence by ticket_id
-      const evidenceMap = {};
-      evidence.forEach(e => {
-        if (!evidenceMap[e.ticket_id]) evidenceMap[e.ticket_id] = [];
-        evidenceMap[e.ticket_id].push(e);
-      });
-
-      // Attach evidence to each ticket
-      const result = tickets.map(ticket => ({
-        ...ticket,
-        evidence: evidenceMap[ticket.ticket_id] || []
-      }));
-
-      res.json({ success: true, data: result });
-    });
-  });
-});
-
-
-// Additional routes for complete ticket management functionality
-
-// Get HR responses for logged-in user
-router.get('/hr-responses', (req, res) => {
-  const { email } = req.query;
-
-  if (!email) {
-    return res.status(400).json({ success: false, message: 'Email is required' });
-  }
-
-  const sql = `
-    SELECT 
-      mt.ticket_id,
-      mt.asset_id,
-      a.model,
-      mt.issue_description as description,
-      mt.status,
-      mt.resolution_notes as hr_response,
-      mt.updated_at as hr_response_date,
-      mt.created_at
-    FROM maintenance_tickets mt
-    LEFT JOIN assets a ON mt.asset_id = a.asset_id
-    WHERE mt.reported_by = ? 
-    AND mt.resolution_notes IS NOT NULL
-    ORDER BY mt.updated_at DESC
-  `;
-
-  db.query(sql, [email], (err, results) => {
-    if (err) {
-      console.error('Error fetching HR responses:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    res.json({ success: true, data: results });
-  });
-});
-
-// Cancel/Delete ticket route
-router.delete('/tickets/:ticketId', (req, res) => {
-  const { ticketId } = req.params;
-
-  if (!ticketId) {
-    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
-  }
-
-  // Start transaction to delete ticket and related evidence
-  db.beginTransaction(err => {
-    if (err) {
-      console.error('Error starting transaction:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    // First delete evidence files
-    const deleteEvidenceSql = 'DELETE FROM ticket_evidence WHERE ticket_id = ?';
-    
-    db.query(deleteEvidenceSql, [ticketId], (err, result) => {
-      if (err) {
-        return db.rollback(() => {
-          console.error('Error deleting ticket evidence:', err);
-          res.status(500).json({ success: false, message: 'Server error' });
-        });
-      }
-
-      // Then delete the ticket
-      const deleteTicketSql = 'DELETE FROM maintenance_tickets WHERE ticket_id = ?';
-      
-      db.query(deleteTicketSql, [ticketId], (err, result) => {
-        if (err) {
-          return db.rollback(() => {
-            console.error('Error deleting ticket:', err);
-            res.status(500).json({ success: false, message: 'Server error' });
-          });
-        }
-
-        if (result.affectedRows === 0) {
-          return db.rollback(() => {
-            res.status(404).json({ success: false, message: 'Ticket not found' });
-          });
-        }
-
-        db.commit(err => {
-          if (err) {
-            return db.rollback(() => {
-              console.error('Error committing transaction:', err);
-              res.status(500).json({ success: false, message: 'Server error' });
-            });
-          }
-
-          res.json({ success: true, message: 'Ticket cancelled successfully' });
-        });
-      });
-    });
-  });
-});
-
-// Get ticket activity logs/details
-router.get('/ticket-logs/:ticketId', (req, res) => {
-  const { ticketId } = req.params;
-
-  if (!ticketId) {
-    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
-  }
-
-  // Get ticket details and evidence
-  const ticketSql = `
-    SELECT 
-      mt.*,
-      a.model,
-      a.name as asset_name
-    FROM maintenance_tickets mt
-    LEFT JOIN assets a ON mt.asset_id = a.asset_id
-    WHERE mt.ticket_id = ?
-  `;
-
-  db.query(ticketSql, [ticketId], (err, ticketResults) => {
-    if (err) {
-      console.error('Error fetching ticket details:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    if (ticketResults.length === 0) {
-      return res.status(404).json({ success: false, message: 'Ticket not found' });
-    }
-
-    const ticket = ticketResults[0];
-
-    // Get evidence files
-    const evidenceSql = 'SELECT * FROM ticket_evidence WHERE ticket_id = ? ORDER BY uploaded_at DESC';
-    
-    db.query(evidenceSql, [ticketId], (err, evidenceResults) => {
-      if (err) {
-        console.error('Error fetching ticket evidence:', err);
-        return res.status(500).json({ success: false, message: 'Server error' });
-      }
-
-      // Create activity log format
-      const activities = [];
-
-      // Initial ticket creation
-      activities.push({
-        date: ticket.created_at,
-        user: ticket.reported_by,
-        message: `Ticket created: ${ticket.issue_description}`,
-        type: 'created',
-        attachments: evidenceResults.map(e => e.file_path)
-      });
-
-      // Add HR response if exists
-      if (ticket.resolution_notes) {
-        activities.push({
-          date: ticket.updated_at,
-          user: 'HR Team',
-          message: ticket.resolution_notes,
-          type: 'response',
-          attachments: []
-        });
-      }
-
-      res.json({ success: true, data: activities });
-    });
-  });
-});
-
-// Get next ticket ID (for frontend reference if needed)
-router.get('/tickets/next-id', (req, res) => {
-  const year = new Date().getFullYear();
-  const prefix = `TID${year}`;
-  
-  const sql = `
-    SELECT LPAD(COALESCE(MAX(CAST(SUBSTRING(ticket_id, 8) AS UNSIGNED)), 0) + 1, 4, '0') AS seq
-    FROM maintenance_tickets
-    WHERE ticket_id LIKE ?
-  `;
-
-  db.query(sql, [`${prefix}%`], (err, results) => {
-    if (err) {
-      console.error('Error fetching next ticket id:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    const seq = results[0]?.seq || '0001';
-    const nextId = `${prefix}${seq}`;
-    
-    res.json({ success: true, data: { nextId } });
-  });
-});
-
-
-// Add these routes to your existing router
-
-// Get all tickets for HR (with filters)
-router.get('/hr/tickets', (req, res) => {
-  const { status, page = 1, limit = 10 } = req.query;
-
-  let sql = `
-    SELECT 
-      mt.ticket_id,
-      mt.asset_id,
-      mt.reported_by,
-      mt.issue_description,
-      mt.status,
-      mt.priority,
-      mt.created_at,
-      mt.assigned_to,
-      mt.resolution_notes,
-      mt.updated_at,
-      a.model as asset_model,
-      a.name as asset_name,
-      u.name as employee_name,
-      u.employee_id
-    FROM maintenance_tickets mt
-    LEFT JOIN assets a ON mt.asset_id = a.asset_id
-    LEFT JOIN users u ON mt.reported_by = u.email
-    WHERE 1=1
-  `;
-
-  let params = [];
-
-  // Filter by status if provided
-  if (status && status !== 'all') {
-    sql += ` AND mt.status = ?`;
-    params.push(status);
-  }
-
-  sql += ` ORDER BY mt.created_at DESC`;
-
-  // Add pagination
-  const offset = (page - 1) * limit;
-  sql += ` LIMIT ? OFFSET ?`;
-  params.push(parseInt(limit), offset);
-
-  db.query(sql, params, (err, tickets) => {
-    if (err) {
-      console.error('Error fetching tickets for HR:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    // Get evidence for all tickets
-    if (tickets.length > 0) {
-      const ticketIds = tickets.map(t => t.ticket_id);
-      const placeholders = ticketIds.map(() => '?').join(',');
-
-      const evidenceSql = `
-        SELECT ticket_id, file_type, file_path, uploaded_at
-        FROM ticket_evidence
-        WHERE ticket_id IN (${placeholders})
-        ORDER BY uploaded_at DESC
-      `;
-
-      db.query(evidenceSql, ticketIds, (err2, evidence) => {
-        if (err2) {
-          console.error('Error fetching evidence:', err2);
-          return res.status(500).json({ success: false, message: 'Server error' });
-        }
-
-        // Group evidence by ticket_id
-        const evidenceMap = {};
-        evidence.forEach(e => {
-          if (!evidenceMap[e.ticket_id]) evidenceMap[e.ticket_id] = [];
-          evidenceMap[e.ticket_id].push({
-            type: e.file_type,
-            url: `/uploads/${e.file_path}`,
-            filename: e.file_path
-          });
-        });
-
-        // Attach evidence to tickets
-        const result = tickets.map(ticket => ({
-          ...ticket,
-          evidence: evidenceMap[ticket.ticket_id] || []
-        }));
-
-        res.json({ success: true, data: result });
-      });
-    } else {
-      res.json({ success: true, data: [] });
-    }
-  });
-});
-
-// Get ticket statistics for HR dashboard
-router.get('/hr/ticket-stats', (req, res) => {
-  const statsSql = `
-    SELECT 
-      status,
-      COUNT(*) as count
-    FROM maintenance_tickets
-    GROUP BY status
-  `;
-
-  db.query(statsSql, (err, results) => {
-    if (err) {
-      console.error('Error fetching ticket stats:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    const stats = {
-      open: 0,
-      'under review': 0,
-      escalated: 0,
-      closed: 0,
-      total: 0
-    };
-
-    results.forEach(row => {
-      const status = row.status.toLowerCase();
-      stats[status] = row.count;
-      stats.total += row.count;
-    });
-
-    res.json({ success: true, data: stats });
-  });
-});
-
-// Update ticket status and add HR response
-router.put('/hr/tickets/:ticketId', (req, res) => {
-  const { ticketId } = req.params;
-  const { 
-    status, 
-    hrResponse, 
-    informationRequest, 
-    assignedTo 
-  } = req.body;
-
-  if (!ticketId) {
-    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
-  }
-
-  // Build update fields dynamically
-  let updateFields = [];
-  let updateValues = [];
-
-  if (status) {
-    updateFields.push('status = ?');
-    updateValues.push(status);
-  }
-
-  if (hrResponse) {
-    updateFields.push('resolution_notes = ?');
-    updateValues.push(hrResponse);
-    updateFields.push('updated_at = ?');
-    updateValues.push(new Date());
-  }
-
-  if (assignedTo) {
-    updateFields.push('assigned_to = ?');
-    updateValues.push(assignedTo);
-  }
-
-  if (updateFields.length === 0) {
-    return res.status(400).json({ success: false, message: 'No updates provided' });
-  }
-
-  const updateSql = `
-    UPDATE maintenance_tickets 
-    SET ${updateFields.join(', ')}
-    WHERE ticket_id = ?
-  `;
-
-  updateValues.push(ticketId);
-
-  db.query(updateSql, updateValues, (err, result) => {
-    if (err) {
-      console.error('Error updating ticket:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Ticket not found' });
-    }
-
-    // If there's an information request, you might want to send an email notification here
-    if (informationRequest) {
-      // Add logic to notify employee about information request
-      console.log(`Information request for ticket ${ticketId}: ${informationRequest}`);
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Ticket updated successfully',
-      data: { ticketId, status, hrResponse, informationRequest }
-    });
-  });
-});
-
-// Get all tickets for HR (with filters)
-router.get('/hr/tickets', (req, res) => {
-  const { status, page = 1, limit = 10 } = req.query;
-
-  let sql = `
-    SELECT 
-      mt.*,
-      a.model as asset_model,
-      a.name as asset_name,
-      u.name as employee_name,
-      u.employee_id
-    FROM maintenance_tickets mt
-    LEFT JOIN assets a ON mt.asset_id = a.asset_id
-    LEFT JOIN users u ON mt.reported_by = u.email
-    WHERE 1=1
-  `;
-
-  let params = [];
-
-  // Filter by status if provided
-  if (status && status !== 'all') {
-    sql += ` AND mt.status = ?`;
-    params.push(status);
-  }
-
-  sql += ` ORDER BY mt.created_at DESC`;
-
-  // Add pagination
-  const offset = (page - 1) * limit;
-  sql += ` LIMIT ? OFFSET ?`;
-  params.push(parseInt(limit), offset);
-
-  db.query(sql, params, (err, tickets) => {
-    if (err) {
-      console.error('Error fetching tickets for HR:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    // Get evidence for all tickets
-    if (tickets.length > 0) {
-      const ticketIds = tickets.map(t => t.ticket_id);
-      const placeholders = ticketIds.map(() => '?').join(',');
-
-      const evidenceSql = `
-        SELECT ticket_id, file_type, file_path, uploaded_at
-        FROM ticket_evidence
-        WHERE ticket_id IN (${placeholders})
-        ORDER BY uploaded_at DESC
-      `;
-
-      db.query(evidenceSql, ticketIds, (err2, evidence) => {
-        if (err2) {
-          console.error('Error fetching evidence:', err2);
-          return res.status(500).json({ success: false, message: 'Server error' });
-        }
-
-        // Group evidence by ticket_id
-        const evidenceMap = {};
-        evidence.forEach(e => {
-          if (!evidenceMap[e.ticket_id]) evidenceMap[e.ticket_id] = [];
-          evidenceMap[e.ticket_id].push({
-            file_type: e.file_type,
-            file_path: e.file_path,
-            updated_at: e.updated_at
-          });
-        });
-
-        // Attach evidence to tickets
-        const result = tickets.map(ticket => ({
-          ...ticket,
-          evidence: evidenceMap[ticket.ticket_id] || []
-        }));
-
-        res.json({ success: true, data: result });
-      });
-    } else {
-      res.json({ success: true, data: [] });
-    }
-  });
-});
-
-// Update ticket status and add HR response
-router.put('/hr/tickets/:ticketId', (req, res) => {
-  const { ticketId } = req.params;
-  const { 
-    status, 
-    hrResponse, 
-    informationRequest, 
-    assignedTo 
-  } = req.body;
-
-  if (!ticketId) {
-    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
-  }
-
-  // Build update fields dynamically
-  let updateFields = [];
-  let updateValues = [];
-
-  if (status) {
-    updateFields.push('status = ?');
-    updateValues.push(status);
-  }
-
-  if (hrResponse) {
-    updateFields.push('resolution_notes = ?');
-    updateValues.push(hrResponse);
-    updateFields.push('updated_at = ?');
-    updateValues.push(new Date());
-  }
-
-  if (assignedTo) {
-    updateFields.push('assigned_to = ?');
-    updateValues.push(assignedTo);
-  }
-
-  if (updateFields.length === 0) {
-    return res.status(400).json({ success: false, message: 'No updates provided' });
-  }
-
-  const updateSql = `
-    UPDATE maintenance_tickets 
-    SET ${updateFields.join(', ')}
-    WHERE ticket_id = ?
-  `;
-
-  updateValues.push(ticketId);
-
-  db.query(updateSql, updateValues, (err, result) => {
-    if (err) {
-      console.error('Error updating ticket:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Ticket not found' });
-    }
-
-    // If there's an information request, you might want to send an email notification here
-    if (informationRequest) {
-      // Add logic to notify employee about information request
-      console.log(`Information request for ticket ${ticketId}: ${informationRequest}`);
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Ticket updated successfully',
-      data: { ticketId, status, hrResponse, informationRequest }
-    });
-  });
-});
-
-
-
-// ==================== FIXED TICKET MANAGEMENT APIs ====================
-// Replace the previous ticket API endpoints with these corrected versions
-
-// Get ticket statistics for HR dashboard
-router.get('/hr/ticket-stats', (req, res) => {
-  const statsSql = `
-    SELECT 
-      status,
-      COUNT(*) as count
-    FROM maintenance_tickets
-    GROUP BY status
-  `;
-
-  db.query(statsSql, (err, results) => {
-    if (err) {
-      console.error('Error fetching ticket stats:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    const stats = {
-      open: 0,
-      'under review': 0,
-      escalated: 0,
-      closed: 0,
-      total: 0
-    };
-
-    results.forEach(row => {
-      const status = row.status.toLowerCase();
-      stats[status] = row.count;
-      stats.total += row.count;
-    });
-
-    res.json({ success: true, data: stats });
-  });
-});
-
-// Get all tickets for HR with filtering and evidence (FIXED COLUMN NAMES)
-router.get('/hr/tickets', (req, res) => {
-  const { status, page = 1, limit = 20 } = req.query;
-
-  let sql = `
-    SELECT 
-      mt.ticket_id,
-      mt.asset_id,
-      mt.reported_by,
-      mt.issue_description,
-      mt.status,
-      mt.priority,
-      mt.created_at,
-      mt.assigned_to,
-      mt.resolution_notes,
-      mt.updated_at,
-      a.model as asset_model,
-      a.name as asset_name,
-      u.name as employee_name,
-      u.employee_id
-    FROM maintenance_tickets mt
-    LEFT JOIN assets a ON mt.asset_id = a.asset_id
-    LEFT JOIN users u ON mt.reported_by = u.email
-    WHERE 1=1
-  `;
-
-  let params = [];
-
-  // Filter by status if provided
-  if (status && status !== 'all') {
-    sql += ` AND mt.status = ?`;
-    params.push(status);
-  }
-
-  // Order by created date (newest first)
-  sql += ` ORDER BY mt.created_at DESC`;
-
-  // Add pagination
-  const offset = (page - 1) * limit;
-  sql += ` LIMIT ? OFFSET ?`;
-  params.push(parseInt(limit), offset);
-
-  db.query(sql, params, (err, tickets) => {
-    if (err) {
-      console.error('Error fetching tickets for HR:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    // Get evidence for all tickets if any exist
-    if (tickets.length > 0) {
-      const ticketIds = tickets.map(t => t.ticket_id);
-      const placeholders = ticketIds.map(() => '?').join(',');
-
-      const evidenceSql = `
-        SELECT ticket_id, file_type, file_path, uploaded_at
-        FROM ticket_evidence
-        WHERE ticket_id IN (${placeholders})
-        ORDER BY uploaded_at DESC
-      `;
-
-      db.query(evidenceSql, ticketIds, (err2, evidence) => {
-        if (err2) {
-          console.error('Error fetching evidence:', err2);
-          // Still return tickets without evidence rather than failing
-          const result = tickets.map(ticket => ({
-            ...ticket,
-            evidence: []
-          }));
-          return res.json({ success: true, data: result });
-        }
-
-        // Group evidence by ticket_id
-        const evidenceMap = {};
-        evidence.forEach(e => {
-          if (!evidenceMap[e.ticket_id]) evidenceMap[e.ticket_id] = [];
-          evidenceMap[e.ticket_id].push({
-            file_type: e.file_type,
-            file_path: e.file_path,
-            updated_at: e.updated_at
-          });
-        });
-
-        // Attach evidence to tickets
-        const result = tickets.map(ticket => ({
-          ...ticket,
-          evidence: evidenceMap[ticket.ticket_id] || []
-        }));
-
-        res.json({ success: true, data: result });
-      });
-    } else {
-      res.json({ success: true, data: [] });
-    }
-  });
-});
-
-// Update ticket status and add HR response (FIXED COLUMN NAMES)
-router.put('/hr/tickets/:ticketId', (req, res) => {
-  const { ticketId } = req.params;
-  const { 
-    status, 
-    hrResponse, 
-    informationRequest, 
-    assignedTo 
-  } = req.body;
-
-  if (!ticketId) {
-    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
-  }
-
-  // Build update fields dynamically
-  let updateFields = [];
-  let updateValues = [];
-
-  if (status) {
-    updateFields.push('status = ?');
-    updateValues.push(status);
-  }
-
-  if (hrResponse) {
-    updateFields.push('resolution_notes = ?');
-    updateValues.push(hrResponse);
-  }
-
-  if (assignedTo) {
-    updateFields.push('assigned_to = ?');
-    updateValues.push(assignedTo);
-  }
-
-  // Always update the updated_at timestamp
-  updateFields.push('updated_at = ?');
-  updateValues.push(new Date());
-
-  if (updateFields.length === 1) { // Only updated_at field
-    return res.status(400).json({ success: false, message: 'No updates provided' });
-  }
-
-  const updateSql = `
-    UPDATE maintenance_tickets 
-    SET ${updateFields.join(', ')}
-    WHERE ticket_id = ?
-  `;
-
-  updateValues.push(ticketId);
-
-  db.query(updateSql, updateValues, (err, result) => {
-    if (err) {
-      console.error('Error updating ticket:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Ticket not found' });
-    }
-
-    // Log the information request if provided
-    if (informationRequest) {
-      console.log(`Information request for ticket ${ticketId}: ${informationRequest}`);
-      // You can implement email notification or internal messaging here
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Ticket updated successfully',
-      data: { 
-        ticketId, 
-        status, 
-        hrResponse, 
-        informationRequest,
-        updatedAt: new Date()
-      }
-    });
-  });
-});
-
-// Get specific ticket details with evidence (FIXED COLUMN NAMES)
-router.get('/hr/tickets/:ticketId', (req, res) => {
-  const { ticketId } = req.params;
-
-  if (!ticketId) {
-    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
-  }
-
-  // Get ticket details
-  const ticketSql = `
-    SELECT 
-      mt.*,
-      a.model as asset_model,
-      a.name as asset_name,
-      u.name as employee_name,
-      u.employee_id
-    FROM maintenance_tickets mt
-    LEFT JOIN assets a ON mt.asset_id = a.asset_id
-    LEFT JOIN users u ON mt.reported_by = u.email
-    WHERE mt.ticket_id = ?
-  `;
-
-  db.query(ticketSql, [ticketId], (err, ticketResults) => {
-    if (err) {
-      console.error('Error fetching ticket details:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    if (ticketResults.length === 0) {
-      return res.status(404).json({ success: false, message: 'Ticket not found' });
-    }
-
-    const ticket = ticketResults[0];
-
-    // Get evidence files
-    const evidenceSql = 'SELECT * FROM ticket_evidence WHERE ticket_id = ? ORDER BY uploaded_at DESC';
-    
-    db.query(evidenceSql, [ticketId], (err, evidenceResults) => {
-      if (err) {
-        console.error('Error fetching ticket evidence:', err);
-        return res.status(500).json({ success: false, message: 'Server error' });
-      }
-
-      // Attach evidence to ticket
-      ticket.evidence = evidenceResults.map(e => ({
-        file_type: e.file_type,
-        file_path: e.file_path,
-        updated_at: e.updated_at
-      }));
-
-      res.json({ success: true, data: ticket });
-    });
-  });
-});
-
-// Get ticket history/activity logs for specific ticket (FIXED COLUMN NAMES)
-router.get('/hr/tickets/:ticketId/history', (req, res) => {
-  const { ticketId } = req.params;
-
-  if (!ticketId) {
-    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
-  }
-
-  // Get ticket timeline
-  const historySql = `
-    SELECT 
-      ticket_id,
-      'created' as action_type,
-      created_at as action_date,
-      reported_by as action_by,
-      issue_description as action_details
-    FROM maintenance_tickets 
-    WHERE ticket_id = ?
-    
-    UNION ALL
-    
-    SELECT 
-      ticket_id,
-      'updated' as action_type,
-      updated_at as action_date,
-      'HR Team' as action_by,
-      resolution_notes as action_details
-    FROM maintenance_tickets 
-    WHERE ticket_id = ? AND resolution_notes IS NOT NULL AND updated_at IS NOT NULL
-    
-    ORDER BY action_date ASC
-  `;
-
-  db.query(historySql, [ticketId, ticketId], (err, results) => {
-    if (err) {
-      console.error('Error fetching ticket history:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    res.json({ success: true, data: results });
-  });
-});
-
-// Delete/Cancel ticket (FIXED - no column changes needed)
-router.delete('/hr/tickets/:ticketId', (req, res) => {
-  const { ticketId } = req.params;
-
-  if (!ticketId) {
-    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
-  }
-
-  // Start transaction to delete ticket and related evidence
-  db.beginTransaction(err => {
-    if (err) {
-      console.error('Error starting transaction:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    // First delete evidence files
-    const deleteEvidenceSql = 'DELETE FROM ticket_evidence WHERE ticket_id = ?';
-    
-    db.query(deleteEvidenceSql, [ticketId], (err, result) => {
-      if (err) {
-        return db.rollback(() => {
-          console.error('Error deleting ticket evidence:', err);
-          res.status(500).json({ success: false, message: 'Server error' });
-        });
-      }
-
-      // Then delete the ticket
-      const deleteTicketSql = 'DELETE FROM maintenance_tickets WHERE ticket_id = ?';
-      
-      db.query(deleteTicketSql, [ticketId], (err, result) => {
-        if (err) {
-          return db.rollback(() => {
-            console.error('Error deleting ticket:', err);
-            res.status(500).json({ success: false, message: 'Server error' });
-          });
-        }
-
-        if (result.affectedRows === 0) {
-          return db.rollback(() => {
-            res.status(404).json({ success: false, message: 'Ticket not found' });
-          });
-        }
-
-        db.commit(err => {
-          if (err) {
-            return db.rollback(() => {
-              console.error('Error committing transaction:', err);
-              res.status(500).json({ success: false, message: 'Server error' });
-            });
-          }
-
-          res.json({ success: true, message: 'Ticket deleted successfully' });
-        });
-      });
-    });
-  });
-});
-
-// Assign ticket to specific HR person (FIXED COLUMN NAMES)
-router.put('/hr/tickets/:ticketId/assign', (req, res) => {
-  const { ticketId } = req.params;
-  const { assignedTo } = req.body;
-
-  if (!ticketId || !assignedTo) {
-    return res.status(400).json({ success: false, message: 'Ticket ID and assignedTo are required' });
-  }
-
-  const updateSql = `
-    UPDATE maintenance_tickets 
-    SET assigned_to = ?, updated_at = ?
-    WHERE ticket_id = ?
-  `;
-
-  db.query(updateSql, [assignedTo, new Date(), ticketId], (err, result) => {
-    if (err) {
-      console.error('Error assigning ticket:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Ticket not found' });
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Ticket assigned successfully',
-      data: { ticketId, assignedTo }
-    });
-  });
-});
-
-// Update ticket priority (FIXED COLUMN NAMES)
-router.put('/hr/tickets/:ticketId/priority', (req, res) => {
-  const { ticketId } = req.params;
-  const { priority } = req.body;
-
-  if (!ticketId || !priority) {
-    return res.status(400).json({ success: false, message: 'Ticket ID and priority are required' });
-  }
-
-  if (!['Low', 'Medium', 'High'].includes(priority)) {
-    return res.status(400).json({ success: false, message: 'Invalid priority. Must be Low, Medium, or High' });
-  }
-
-  const updateSql = `
-    UPDATE maintenance_tickets 
-    SET priority = ?, updated_at = ?
-    WHERE ticket_id = ?
-  `;
-
-  db.query(updateSql, [priority, new Date(), ticketId], (err, result) => {
-    if (err) {
-      console.error('Error updating ticket priority:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Ticket not found' });
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Ticket priority updated successfully',
-      data: { ticketId, priority }
-    });
-  });
-});
-
-// Get tickets assigned to specific HR person (FIXED COLUMN NAMES)
-router.get('/hr/my-tickets/:hrEmail', (req, res) => {
-  const { hrEmail } = req.params;
-  const { status } = req.query;
-
-  if (!hrEmail) {
-    return res.status(400).json({ success: false, message: 'HR email is required' });
-  }
-
-  let sql = `
-    SELECT 
-      mt.*,
-      a.model as asset_model,
-      a.name as asset_name,
-      u.name as employee_name,
-      u.employee_id
-    FROM maintenance_tickets mt
-    LEFT JOIN assets a ON mt.asset_id = a.asset_id
-    LEFT JOIN users u ON mt.reported_by = u.email
-    WHERE mt.assigned_to = ?
-  `;
-
-  let params = [hrEmail];
-
-  if (status && status !== 'all') {
-    sql += ` AND mt.status = ?`;
-    params.push(status);
-  }
-
-  sql += ` ORDER BY mt.created_at DESC`;
-
-  db.query(sql, params, (err, results) => {
-    if (err) {
-      console.error('Error fetching assigned tickets:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    res.json({ success: true, data: results });
-  });
-});
-
-// Get ticket reports/analytics (FIXED COLUMN NAMES)
-router.get('/hr/ticket-reports', (req, res) => {
-  const { startDate, endDate, groupBy = 'status' } = req.query;
-
-  let sql = `
-    SELECT 
-      ${groupBy},
-      COUNT(*) as count,
-      AVG(TIMESTAMPDIFF(HOUR, created_at, COALESCE(updated_at, NOW()))) as avg_resolution_hours
-    FROM maintenance_tickets
-    WHERE 1=1
-  `;
-
-  let params = [];
-
-  if (startDate) {
-    sql += ` AND created_at >= ?`;
-    params.push(startDate);
-  }
-
-  if (endDate) {
-    sql += ` AND created_at <= ?`;
-    params.push(endDate);
-  }
-
-  sql += ` GROUP BY ${groupBy} ORDER BY count DESC`;
-
-  db.query(sql, params, (err, results) => {
-    if (err) {
-      console.error('Error fetching ticket reports:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
-    }
-
-    res.json({ success: true, data: results });
-  });
-});
   return router;
 };
-
-
-
-
-

@@ -15,7 +15,7 @@ interface Evidence {
   file_type?: string;
 }   
 
-interface ActivityLog {
+interface ActivityLogOld {
   timestamp: Date;
   message: string;
   user: string;
@@ -29,7 +29,7 @@ interface UserActivity {
   userInitials: string;
   device: string;
   issueType: string;
-  activities: ActivityLog[];
+  activities: ActivityLogOld[];
 }
 
 interface DateGroup {
@@ -93,6 +93,28 @@ interface Ticket {
   employee_name?: string;
   employee_id?: string;
   evidence: Evidence[];
+}
+
+interface ActivityLog {
+  id: number;
+  employee_id?: string;
+  employee_email?: string;
+  employee_name?: string;
+  action_type: string;
+  action_description: string;
+  asset_id?: string;
+  ticket_id?: string;
+  performed_by: string;
+  performed_by_name?: string;
+  created_at: Date;
+  additional_data?: any;
+}
+
+interface GroupedActivityLog {
+  employee_id?: string;
+  employee_email?: string;
+  employee_name?: string;
+  activities: ActivityLog[];
 }
 
 @Component({
@@ -184,8 +206,8 @@ export class AssetManagementComponent implements OnInit {
   currentTicketFilter = 'all';
   isLoadingTickets = false;
   
-  // Activity Logs
-  activityLogs: ActivityLog[] = [
+  // Activity Logs - Legacy (kept for backwards compatibility)
+  activityLogs: ActivityLogOld[] = [
     { 
       timestamp: new Date('2023-10-30T09:15:00'), 
       message: 'Device allocated to Raj Sharma', 
@@ -235,6 +257,25 @@ export class AssetManagementComponent implements OnInit {
       addedBy: 'HR'
     }
   ];
+
+  // New Activity Logs Properties
+  newActivityLogs: ActivityLog[] = [];
+  groupedActivityLogs: GroupedActivityLog[] = [];
+  isLoadingActivityLogs = false;
+  expandedActivityIds = new Set<number>();
+  
+  // Activity Logs Filters
+  activityLogFilters = {
+    employeeName: '',
+    employeeId: '',
+    startDate: '',
+    endDate: ''
+  };
+  
+  // Activity Logs Pagination
+  currentActivityPage = 1;
+  totalActivityPages = 1;
+  activityPageSize = 20;
 
   constructor(
     private fb: FormBuilder,
@@ -297,6 +338,7 @@ export class AssetManagementComponent implements OnInit {
     this.loadTickets();
     this.loadTicketStatistics();
     this.setupFilterSubscriptions();
+    this.loadActivityLogs(); // Load activity logs on init
   }
 
   ngAfterViewInit() {
@@ -323,6 +365,211 @@ export class AssetManagementComponent implements OnInit {
 
   onSidebarToggle(isMinimized: boolean) {
     this.isSidebarMinimized = isMinimized;
+  }
+
+  // ==================== ACTIVITY LOGS METHODS ====================
+
+  /**
+   * Load activity logs with current filters and pagination
+   */
+  loadActivityLogs(): void {
+    this.isLoadingActivityLogs = true;
+    
+    let params = new HttpParams()
+      .set('page', this.currentActivityPage.toString())
+      .set('limit', this.activityPageSize.toString())
+      .set('group_by', 'employee');
+
+    // Apply filters
+    if (this.activityLogFilters.employeeName.trim()) {
+      params = params.set('employee_name', this.activityLogFilters.employeeName.trim());
+    }
+    
+    if (this.activityLogFilters.employeeId.trim()) {
+      params = params.set('employee_id', this.activityLogFilters.employeeId.trim());
+    }
+    
+    if (this.activityLogFilters.startDate) {
+      params = params.set('start_date', this.activityLogFilters.startDate);
+    }
+    
+    if (this.activityLogFilters.endDate) {
+      params = params.set('end_date', this.activityLogFilters.endDate);
+    }
+
+    this.http.get<{ success: boolean; data: GroupedActivityLog[]; grouped: boolean }>
+      ('http://localhost:3000/api/hr/activity-logs', { params })
+      .subscribe({
+        next: (response) => {
+          if (response.success) {
+            if (response.grouped) {
+              this.groupedActivityLogs = response.data;
+            } else {
+              // If not grouped, group them manually (fallback)
+              this.groupedActivityLogs = this.groupActivitiesByEmployee(response.data as any);
+            }
+            console.log('Activity logs loaded:', this.groupedActivityLogs);
+          } else {
+            console.error('Failed to load activity logs');
+            this.groupedActivityLogs = [];
+          }
+          this.isLoadingActivityLogs = false;
+        },
+        error: (error) => {
+          console.error('Error loading activity logs:', error);
+          this.groupedActivityLogs = [];
+          this.isLoadingActivityLogs = false;
+        }
+      });
+  }
+
+  /**
+   * Group activities by employee (fallback method)
+   */
+  private groupActivitiesByEmployee(activities: ActivityLog[]): GroupedActivityLog[] {
+    const grouped: { [key: string]: GroupedActivityLog } = {};
+    
+    activities.forEach(activity => {
+      const key = `${activity.employee_id || 'unknown'}-${activity.employee_email || 'unknown'}`;
+      
+      if (!grouped[key]) {
+        grouped[key] = {
+          employee_id: activity.employee_id,
+          employee_email: activity.employee_email,
+          employee_name: activity.employee_name,
+          activities: []
+        };
+      }
+      
+      grouped[key].activities.push(activity);
+    });
+
+    // Sort activities within each group by date (most recent first)
+    Object.values(grouped).forEach(group => {
+      group.activities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    });
+
+    return Object.values(grouped);
+  }
+
+  /**
+   * Handle filter changes with debouncing
+   */
+  onFilterChange(): void {
+    // Reset to first page when filters change
+    this.currentActivityPage = 1;
+    
+    // Debounce the filter changes
+    setTimeout(() => {
+      this.loadActivityLogs();
+    }, 300);
+  }
+
+  /**
+   * Clear all filters
+   */
+  clearFilters(): void {
+    this.activityLogFilters = {
+      employeeName: '',
+      employeeId: '',
+      startDate: '',
+      endDate: ''
+    };
+    this.currentActivityPage = 1;
+    this.loadActivityLogs();
+  }
+
+  /**
+   * Load next page of activity logs
+   */
+  loadNextActivityPage(): void {
+    if (this.currentActivityPage < this.totalActivityPages) {
+      this.currentActivityPage++;
+      this.loadActivityLogs();
+    }
+  }
+
+  /**
+   * Load previous page of activity logs
+   */
+  loadPreviousActivityPage(): void {
+    if (this.currentActivityPage > 1) {
+      this.currentActivityPage--;
+      this.loadActivityLogs();
+    }
+  }
+
+  /**
+   * Toggle additional data visibility for an activity
+   */
+  toggleAdditionalData(activityId: number): void {
+    if (this.expandedActivityIds.has(activityId)) {
+      this.expandedActivityIds.delete(activityId);
+    } else {
+      this.expandedActivityIds.add(activityId);
+    }
+  }
+
+  /**
+   * Format additional data for display
+   */
+  formatAdditionalData(additionalData: any): string {
+    if (!additionalData) return '';
+    
+    try {
+      if (typeof additionalData === 'string') {
+        additionalData = JSON.parse(additionalData);
+      }
+      return JSON.stringify(additionalData, null, 2);
+    } catch (e) {
+      return additionalData.toString();
+    }
+  }
+
+  /**
+   * Get employee initials for avatar
+   */
+ getEmployeeInitials(name: string | undefined): string {
+  if (!name) return 'N/A';
+  
+  return name
+    .split(' ')
+    .map(part => part.charAt(0))
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
+}
+
+  /**
+   * Get action type display name
+   */
+  getActionTypeDisplayName(actionType: string): string {
+    const actionTypeMap: { [key: string]: string } = {
+      'asset_allocated': 'Asset Allocated',
+      'ticket_raised': 'Ticket Raised',
+      'ticket_responded': 'HR Responded',
+      'asset_returned': 'Asset Returned',
+      'asset_updated': 'Asset Updated',
+      'ticket_updated': 'Ticket Updated'
+    };
+    
+    return actionTypeMap[actionType] || actionType.replace('_', ' ').toUpperCase();
+  }
+
+  /**
+   * Get action type color class
+   */
+  getActionTypeColorClass(actionType: string): string {
+    const colorMap: { [key: string]: string } = {
+      'asset_allocated': 'bg-green-100 text-green-600',
+      'ticket_raised': 'bg-blue-100 text-blue-600',
+      'ticket_responded': 'bg-purple-100 text-purple-600',
+      'asset_returned': 'bg-yellow-100 text-yellow-600',
+      'asset_updated': 'bg-orange-100 text-orange-600',
+      'ticket_updated': 'bg-indigo-100 text-indigo-600'
+    };
+    
+    return colorMap[actionType] || 'bg-gray-100 text-gray-600';
   }
 
   // ==================== TICKET MANAGEMENT FUNCTIONS ====================
@@ -453,6 +700,13 @@ openTicketAction(ticket: Ticket): void {
             this.selectedTicket = null;
             this.ticketResponse = '';
             this.informationRequest = '';
+
+            // Refresh activity logs to show the new entry
+            if (this.activeSection === 'logs') {
+              setTimeout(() => {
+                this.loadActivityLogs();
+              }, 1000);
+            }
           } else {
             alert('Failed to update ticket. Please try again.');
           }
@@ -846,6 +1100,13 @@ openTicketAction(ticket: Ticket): void {
                 this.loadAssets();
                 this.closeAddAssetModal();
                 alert('Asset updated successfully!');
+                
+                // Refresh activity logs to show the new entry
+                if (this.activeSection === 'logs') {
+                  setTimeout(() => {
+                    this.loadActivityLogs();
+                  }, 1000);
+                }
               } else {
                 alert('Failed to update asset. Please try again.');
               }
@@ -865,6 +1126,13 @@ openTicketAction(ticket: Ticket): void {
                 alert('Asset added successfully!');
                 this.nextAssetId = null;
                 this.allocationReason = '';
+                
+                // Refresh activity logs to show the new entry
+                if (this.activeSection === 'logs') {
+                  setTimeout(() => {
+                    this.loadActivityLogs();
+                  }, 1000);
+                }
               } else {
                 alert(`Failed to add asset: ${response.message || 'Please try again.'}`);
               }
@@ -1004,9 +1272,9 @@ openTicketAction(ticket: Ticket): void {
     }
   }
 
-  // ==================== ACTIVITY LOGS ====================
+  // ==================== ACTIVITY LOGS (LEGACY) ====================
 
-  get groupedActivityLogs() {
+  get groupedActivityLogs_legacy() {
     const grouped: { [key: string]: DateGroup } = {};
     
     this.activityLogs.forEach(log => {
@@ -1044,3 +1312,8 @@ openTicketAction(ticket: Ticket): void {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
 }
+
+
+
+
+
