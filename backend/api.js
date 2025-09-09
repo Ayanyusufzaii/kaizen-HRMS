@@ -1252,9 +1252,9 @@ router.post('/assets', async (req, res) => {
     });
   };
 
-  if (!allocated_to) {
-    return res.status(400).json({ success: false, message: 'allocated_to (employee_id) is required' });
-  }
+ if (!allocated_to || allocated_to.trim() === '') {
+  return proceed(null, null);
+}
 
   const getEmployeeSql = `SELECT email, name FROM users WHERE employee_id = ?`;
 
@@ -2264,6 +2264,654 @@ router.get('/employees/by-group', (req, res) => {
       return res.status(500).json({ success: false, message: 'Server error' });
     }
     res.json({ success: true, data: results });
+  });
+});
+
+// Add these new routes to your existing router.js file
+
+// ==================== NEW EMPLOYEE TICKET APIS ====================
+
+// Get tickets with latest updates for employee
+router.get('/employee/tickets-with-updates', (req, res) => {
+  const { reported_by } = req.query;
+
+  if (!reported_by) {
+    return res.status(400).json({ success: false, message: 'Missing reported_by email' });
+  }
+
+  const ticketSql = `
+    SELECT 
+      mt.*,
+      a.model
+    FROM maintenance_tickets mt
+    LEFT JOIN assets a ON mt.asset_id = a.asset_id
+    WHERE mt.reported_by = ?
+    ORDER BY mt.created_at DESC
+  `;
+
+  db.query(ticketSql, [reported_by], (err, tickets) => {
+    if (err) {
+      console.error('Error fetching tickets:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (!tickets.length) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // Get latest update for each ticket
+    const ticketIds = tickets.map(t => t.ticket_id);
+    const placeholders = ticketIds.map(() => '?').join(',');
+
+    const latestUpdateSql = `
+      SELECT 
+        al1.*
+      FROM activity_logs al1
+      INNER JOIN (
+        SELECT 
+          ticket_id,
+          MAX(created_at) as max_created_at
+        FROM activity_logs
+        WHERE ticket_id IN (${placeholders})
+        AND ticket_id IS NOT NULL
+        GROUP BY ticket_id
+      ) al2 ON al1.ticket_id = al2.ticket_id AND al1.created_at = al2.max_created_at
+    `;
+
+    db.query(latestUpdateSql, ticketIds, (err2, updates) => {
+      if (err2) {
+        console.error('Error fetching latest updates:', err2);
+        // Return tickets without updates
+        const result = tickets.map(ticket => ({
+          ...ticket,
+          latest_update: null
+        }));
+        return res.json({ success: true, data: result });
+      }
+
+      // Map updates to tickets
+      const updateMap = {};
+      updates.forEach(update => {
+        updateMap[update.ticket_id] = {
+          message: update.action_description,
+          date: update.created_at,
+          is_hr: update.performed_by === 'HR'
+        };
+      });
+
+      const result = tickets.map(ticket => ({
+        ...ticket,
+        latest_update: updateMap[ticket.ticket_id] || null
+      }));
+
+      res.json({ success: true, data: result });
+    });
+  });
+});
+
+// Submit employee ticket update
+router.post('/employee/update-ticket', upload.array('files', 5), async (req, res) => {
+  try {
+    const {
+      ticket_id,
+      message,
+      updated_by
+    } = req.body;
+
+    if (!ticket_id || !message || !updated_by) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Ticket ID, message, and updated_by are required' 
+      });
+    }
+
+    // Get ticket and employee details
+    const getTicketSql = `
+      SELECT mt.*, u.employee_id, u.name as employee_name
+      FROM maintenance_tickets mt
+      LEFT JOIN users u ON mt.reported_by = u.email
+      WHERE mt.ticket_id = ?
+    `;
+
+    db.query(getTicketSql, [ticket_id], async (err, ticketResults) => {
+      if (err) {
+        console.error('Error fetching ticket:', err);
+        return res.status(500).json({ success: false, message: 'Server error' });
+      }
+
+      if (ticketResults.length === 0) {
+        return res.status(404).json({ success: false, message: 'Ticket not found' });
+      }
+
+      const ticket = ticketResults[0];
+
+      // Verify the person updating is the ticket owner
+      if (ticket.reported_by !== updated_by) {
+        return res.status(403).json({ success: false, message: 'Unauthorized to update this ticket' });
+      }
+
+      try {
+        // Log the employee response
+        await logTicketConversation(
+          ticket_id,
+          'employee_response',
+          `Employee response: "${message}"`,
+          updated_by,
+          ticket.employee_name,
+          {
+            response: message,
+            has_evidence: req.files && req.files.length > 0,
+            evidence_count: req.files ? req.files.length : 0
+          }
+        );
+
+        // Handle evidence uploads if any
+        if (req.files && req.files.length > 0) {
+          const evidenceValues = req.files.map(file => [
+            ticket_id,
+            file.mimetype.startsWith('video') ? 'video' : 'image',
+            file.filename,
+            new Date()
+          ]);
+
+          const insertEvidenceSql = `
+            INSERT INTO ticket_evidence (ticket_id, file_type, file_path, uploaded_at)
+            VALUES ?
+          `;
+
+          db.query(insertEvidenceSql, [evidenceValues], async (err2) => {
+            if (!err2) {
+              await logTicketConversation(
+                ticket_id,
+                'evidence_uploaded',
+                `Employee uploaded ${req.files.length} additional evidence file(s)`,
+                updated_by,
+                ticket.employee_name,
+                {
+                  files: req.files.map(f => ({
+                    name: f.filename,
+                    type: f.mimetype.startsWith('video') ? 'video' : 'image',
+                    size: f.size
+                  }))
+                }
+              );
+            }
+          });
+        }
+
+        res.json({ 
+          success: true, 
+          message: 'Ticket updated successfully.',
+          data: { 
+            ticket_id,
+            message,
+            updated_at: new Date()
+          }
+        });
+
+      } catch (logError) {
+        console.error('Error logging ticket update:', logError);
+        res.json({ 
+          success: true, 
+          message: 'Ticket updated successfully.',
+          data: { ticket_id }
+        });
+      }
+    });
+
+  } catch (error) {
+    console.error('Unexpected error in employee ticket update:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Get activity logs grouped by ticket for employee
+router.get('/employee/activity-logs-by-ticket', (req, res) => {
+  const { employee_email } = req.query;
+
+  if (!employee_email) {
+    return res.status(400).json({ success: false, message: 'Employee email is required' });
+  }
+
+  const sql = `
+    SELECT 
+      al.*
+    FROM activity_logs al
+    WHERE al.employee_email = ?
+    AND al.ticket_id IS NOT NULL
+    ORDER BY al.ticket_id, al.created_at ASC
+  `;
+
+  db.query(sql, [employee_email], (err, results) => {
+    if (err) {
+      console.error('Error fetching employee activity logs by ticket:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    // Group activities by ticket_id
+    const groupedLogs = {};
+    results.forEach(activity => {
+      const ticketId = activity.ticket_id;
+      if (!groupedLogs[ticketId]) {
+        groupedLogs[ticketId] = {
+          ticket_id: ticketId,
+          activities: []
+        };
+      }
+      groupedLogs[ticketId].activities.push(activity);
+    });
+
+    // Convert to array and sort by most recent activity
+    const groupedArray = Object.values(groupedLogs).sort((a, b) => {
+      const latestA = Math.max(...a.activities.map(act => new Date(act.created_at).getTime()));
+      const latestB = Math.max(...b.activities.map(act => new Date(act.created_at).getTime()));
+      return latestB - latestA;
+    });
+
+    res.json({ success: true, data: groupedArray });
+  });
+});
+
+// ==================== ENHANCED HR TICKET MANAGEMENT ====================
+
+// Get all tickets for HR with latest activities
+router.get('/hr/tickets-enhanced', (req, res) => {
+  const { status, page = 1, limit = 20 } = req.query;
+
+  let sql = `
+    SELECT 
+      mt.ticket_id,
+      mt.asset_id,
+      mt.reported_by,
+      mt.issue_description,
+      mt.status,
+      mt.priority,
+      mt.created_at,
+      mt.assigned_to,
+      mt.resolution_notes,
+      mt.updated_at,
+      a.model as asset_model,
+      a.name as asset_name,
+      u.name as employee_name,
+      u.employee_id
+    FROM maintenance_tickets mt
+    LEFT JOIN assets a ON mt.asset_id = a.asset_id
+    LEFT JOIN users u ON mt.reported_by = u.email
+    WHERE 1=1
+  `;
+
+  let params = [];
+
+  if (status && status !== 'all') {
+    sql += ` AND mt.status = ?`;
+    params.push(status);
+  }
+
+  sql += ` ORDER BY mt.created_at DESC`;
+
+  const offset = (page - 1) * limit;
+  sql += ` LIMIT ? OFFSET ?`;
+  params.push(parseInt(limit), offset);
+
+  db.query(sql, params, (err, tickets) => {
+    if (err) {
+      console.error('Error fetching tickets for HR:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (tickets.length > 0) {
+      const ticketIds = tickets.map(t => t.ticket_id);
+      const placeholders = ticketIds.map(() => '?').join(',');
+
+      // Get latest activity for each ticket
+      const latestActivitySql = `
+        SELECT 
+          al1.*
+        FROM activity_logs al1
+        INNER JOIN (
+          SELECT 
+            ticket_id,
+            MAX(created_at) as max_created_at
+          FROM activity_logs
+          WHERE ticket_id IN (${placeholders})
+          GROUP BY ticket_id
+        ) al2 ON al1.ticket_id = al2.ticket_id AND al1.created_at = al2.max_created_at
+      `;
+
+      db.query(latestActivitySql, ticketIds, (err2, activities) => {
+        if (err2) {
+          console.error('Error fetching latest activities:', err2);
+          return res.json({ success: true, data: tickets });
+        }
+
+        // Map activities to tickets
+        const activityMap = {};
+        activities.forEach(activity => {
+          activityMap[activity.ticket_id] = {
+            message: activity.action_description,
+            date: activity.created_at,
+            performed_by: activity.performed_by,
+            is_employee_response: activity.performed_by !== 'HR'
+          };
+        });
+
+        const result = tickets.map(ticket => ({
+          ...ticket,
+          latest_activity: activityMap[ticket.ticket_id] || null
+        }));
+
+        res.json({ success: true, data: result });
+      });
+    } else {
+      res.json({ success: true, data: [] });
+    }
+  });
+});
+
+// Get full conversation/activity log for a specific ticket
+router.get('/hr/tickets/:ticketId/conversation', (req, res) => {
+  const { ticketId } = req.params;
+
+  if (!ticketId) {
+    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
+  }
+
+  const sql = `
+    SELECT 
+      al.*,
+      DATE_FORMAT(al.created_at, '%Y-%m-%d %H:%i:%s') as formatted_date
+    FROM activity_logs al
+    WHERE al.ticket_id = ?
+    ORDER BY al.created_at ASC
+  `;
+
+  db.query(sql, [ticketId], (err, results) => {
+    if (err) {
+      console.error('Error fetching ticket conversation:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    // Get evidence files for this ticket
+    const evidenceSql = 'SELECT * FROM ticket_evidence WHERE ticket_id = ? ORDER BY uploaded_at DESC';
+    
+    db.query(evidenceSql, [ticketId], (err2, evidenceResults) => {
+      if (err2) {
+        console.error('Error fetching ticket evidence:', err2);
+        // Continue without evidence
+      }
+
+      const conversation = results.map(log => ({
+        id: log.id,
+        timestamp: log.created_at,
+        action_type: log.action_type,
+        message: log.action_description,
+        performed_by: log.performed_by,
+        performed_by_name: log.performed_by_name,
+        additional_data: log.additional_data ? JSON.parse(log.additional_data) : null,
+        is_hr: log.performed_by === 'HR',
+        is_employee: log.performed_by !== 'HR'
+      }));
+
+      res.json({ 
+        success: true, 
+        data: {
+          conversation,
+          evidence: evidenceResults || []
+        }
+      });
+    });
+  });
+});
+
+// Enhanced HR response with better logging
+router.put('/hr/tickets/:ticketId/respond', async (req, res) => {
+  const { ticketId } = req.params;
+  const { 
+    status, 
+    hrResponse, 
+    informationRequest, 
+    assignedTo,
+    respondedBy = 'HR'
+  } = req.body;
+
+  if (!ticketId) {
+    return res.status(400).json({ success: false, message: 'Ticket ID is required' });
+  }
+
+  try {
+    // Get current ticket details
+    const getTicketSql = `
+      SELECT mt.*, u.employee_id, u.name as employee_name, u.email as employee_email
+      FROM maintenance_tickets mt
+      LEFT JOIN users u ON mt.reported_by = u.email
+      WHERE mt.ticket_id = ?
+    `;
+    
+    const ticketResults = await new Promise((resolve, reject) => {
+      db.query(getTicketSql, [ticketId], (err, results) => {
+        if (err) reject(err);
+        else resolve(results);
+      });
+    });
+
+    if (ticketResults.length === 0) {
+      return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    const currentTicket = ticketResults[0];
+
+    // Prepare updates
+    let updateFields = [];
+    let updateValues = [];
+    let logActions = [];
+
+    if (status && status !== currentTicket.status) {
+      updateFields.push('status = ?');
+      updateValues.push(status);
+      logActions.push({
+        type: 'status_updated',
+        description: `HR changed ticket status from "${currentTicket.status}" to "${status}"`,
+        data: { old_status: currentTicket.status, new_status: status }
+      });
+    }
+
+    if (hrResponse && hrResponse.trim()) {
+      updateFields.push('resolution_notes = ?');
+      updateValues.push(hrResponse.trim());
+      logActions.push({
+        type: 'hr_response',
+        description: `HR responded: "${hrResponse.trim()}"`,
+        data: { response: hrResponse.trim() }
+      });
+    }
+
+    if (informationRequest && informationRequest.trim()) {
+      logActions.push({
+        type: 'information_request',
+        description: `HR requested more information: "${informationRequest.trim()}"`,
+        data: { request: informationRequest.trim() }
+      });
+    }
+
+    if (assignedTo && assignedTo !== currentTicket.assigned_to) {
+      updateFields.push('assigned_to = ?');
+      updateValues.push(assignedTo);
+      logActions.push({
+        type: 'ticket_assigned',
+        description: `HR assigned ticket to ${assignedTo}`,
+        data: { assigned_to: assignedTo, previous_assignee: currentTicket.assigned_to }
+      });
+    }
+
+    updateFields.push('updated_at = ?');
+    updateValues.push(new Date());
+
+    if (updateFields.length === 1) {
+      // Only updated_at was added, no real changes
+      return res.status(400).json({ success: false, message: 'No updates provided' });
+    }
+
+    // Update the ticket
+    const updateSql = `
+      UPDATE maintenance_tickets 
+      SET ${updateFields.join(', ')}
+      WHERE ticket_id = ?
+    `;
+
+    updateValues.push(ticketId);
+
+    await new Promise((resolve, reject) => {
+      db.query(updateSql, updateValues, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
+
+    // Log all actions
+    for (const action of logActions) {
+      try {
+        await logTicketConversation(
+          ticketId,
+          action.type,
+          action.description,
+          'HR',
+          'HR Team',
+          action.data
+        );
+      } catch (logError) {
+        console.error('Error logging HR action:', action.type, logError);
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Ticket updated successfully by HR',
+      data: { 
+        ticketId, 
+        status, 
+        hrResponse, 
+        informationRequest,
+        assignedTo,
+        updatedAt: new Date()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in HR ticket response:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ==================== ACTIVITY LOGS MANAGEMENT ====================
+
+// Get activity summary for dashboard
+router.get('/employee/activity-summary', (req, res) => {
+  const { employee_email } = req.query;
+
+  if (!employee_email) {
+    return res.status(400).json({ success: false, message: 'Employee email is required' });
+  }
+
+  const sql = `
+    SELECT 
+      COUNT(*) as total_activities,
+      COUNT(DISTINCT ticket_id) as total_tickets,
+      COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today_activities,
+      COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as week_activities,
+      action_type,
+      COUNT(*) as type_count
+    FROM activity_logs
+    WHERE employee_email = ?
+    GROUP BY action_type
+    ORDER BY type_count DESC
+  `;
+
+  db.query(sql, [employee_email], (err, results) => {
+    if (err) {
+      console.error('Error fetching activity summary:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    // Process results into summary format
+    const summary = {
+      total_activities: 0,
+      total_tickets: 0,
+      today_activities: 0,
+      week_activities: 0,
+      activity_types: {}
+    };
+
+    if (results.length > 0) {
+      // Take summary values from first row (they should be the same across all rows)
+      summary.total_activities = results[0].total_activities;
+      summary.total_tickets = results[0].total_tickets;
+      summary.today_activities = results[0].today_activities;
+      summary.week_activities = results[0].week_activities;
+
+      // Build activity types breakdown
+      results.forEach(row => {
+        summary.activity_types[row.action_type] = row.type_count;
+      });
+    }
+
+    res.json({ success: true, data: summary });
+  });
+});
+
+// Export activity logs for employee
+router.get('/employee/activity-logs/export', (req, res) => {
+  const { employee_email, start_date, end_date } = req.query;
+
+  if (!employee_email) {
+    return res.status(400).json({ success: false, message: 'Employee email is required' });
+  }
+
+  let sql = `
+    SELECT 
+      al.*,
+      DATE_FORMAT(al.created_at, '%Y-%m-%d') as activity_date,
+      TIME_FORMAT(al.created_at, '%H:%i:%s') as activity_time
+    FROM activity_logs al
+    WHERE al.employee_email = ?
+  `;
+  
+  let params = [employee_email];
+
+  if (start_date) {
+    sql += ` AND DATE(al.created_at) >= ?`;
+    params.push(start_date);
+  }
+
+  if (end_date) {
+    sql += ` AND DATE(al.created_at) <= ?`;
+    params.push(end_date);
+  }
+
+  sql += ` ORDER BY al.created_at DESC`;
+
+  db.query(sql, params, (err, results) => {
+    if (err) {
+      console.error('Error fetching activity logs for export:', err);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    // Format for CSV export
+    const csvData = results.map(log => ({
+      date: log.activity_date,
+      time: log.activity_time,
+      action_type: log.action_type,
+      description: log.action_description,
+      asset_id: log.asset_id || '',
+      ticket_id: log.ticket_id || '',
+      performed_by: log.performed_by,
+      performed_by_name: log.performed_by_name || ''
+    }));
+
+    res.json({ 
+      success: true, 
+      data: csvData,
+      total_records: results.length 
+    });
   });
 });
 

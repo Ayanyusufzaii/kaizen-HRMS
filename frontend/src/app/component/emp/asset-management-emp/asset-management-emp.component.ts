@@ -22,17 +22,11 @@ interface MaintenanceTicket {
   issue_description: string;
   status: string;
   created_at: Date;
-}
-
-interface HRResponse {
-  ticket_id: string;
-  asset_id: string;
-  model: string;
-  description: string;
-  status: string;
-  hr_response: string;
-  hr_response_date: Date;
-  created_at: Date;
+  latest_update?: {
+    message: string;
+    date: Date;
+    is_hr: boolean;
+  };
 }
 
 interface ActivityLog {
@@ -50,12 +44,24 @@ interface ActivityLog {
   additional_data?: any;
 }
 
+interface TicketActivityGroup {
+  ticket_id: string;
+  activities: ActivityLog[];
+}
+
 interface ActivityLogOld {
   date: Date;
   user: string;
   message: string;
   type: string;
   attachments?: string[];
+}
+
+interface TicketFilters {
+  search: string;
+  status: string;
+  fromDate: Date | null;
+  toDate: Date | null;
 }
 
 @Component({
@@ -69,24 +75,32 @@ export class AssetManagementEmpComponent implements OnInit {
   activeTab = 'my-assets';
   isSidebarMinimized = false;
   isRaiseTicketModalOpen = false;
+  isUpdateTicketModalOpen = false;
   isActivityLogModalOpen = false;
   isLoading = false;
   isSubmitting = false;
+  isSubmittingUpdate = false;
   
   // File handling
   selectedFile: File | null = null;
   fileError: string = '';
+  selectedUpdateFile: File | null = null;
+  updateFileError: string = '';
+  
+  // Menu state
+  openTicketMenuId: string | null = null;
   
   // User data
   user = { name: 'Employee', email: '' };
   
   // Data arrays
   myAssets: Asset[] = [];
-  raisedIssues: MaintenanceTicket[] = [];
-  hrResponses: HRResponse[] = [];
+  myTicketsWithUpdates: MaintenanceTicket[] = [];
+  filteredTickets: MaintenanceTicket[] = [];
   
-  // Modal data (legacy for ticket activity)
+  // Modal data
   selectedTicket: any = null;
+  selectedTicketForUpdate: any = null;
   selectedTicketActivities: ActivityLogOld[] = [];
   
   // Form data
@@ -96,12 +110,31 @@ export class AssetManagementEmpComponent implements OnInit {
     proof: null
   };
 
-  // Employee Activity Logs Properties (New)
-  employeeActivityLogs: ActivityLog[] = [];
-  isLoadingEmployeeActivityLogs = false;
-  expandedEmployeeActivityIds = new Set<number>();
+  ticketUpdateRequest = {
+    ticketId: '',
+    message: '',
+    proof: null
+  };
 
-  // API Base URL - Update this to match your backend
+  // Filter properties
+  ticketFilters: TicketFilters = {
+    search: '',
+    status: '',
+    fromDate: null,
+    toDate: null
+  };
+
+  // Activity Logs Properties (Updated for grouping)
+  groupedActivityLogs: TicketActivityGroup[] = [];
+  isLoadingActivityLogs = false;
+  expandedTicketIds = new Set<string>();
+  expandedActivityIds = new Set<number>();
+
+  // Material Table Column Definitions
+  assetDisplayedColumns: string[] = ['asset_id', 'name', 'type', 'brand', 'model', 'serial_no', 'created_at', 'status'];
+  ticketDisplayedColumns: string[] = ['ticket_id', 'asset_id', 'model', 'issue_description', 'status', 'latest_update', 'created_at', 'actions'];
+
+  // API Base URL
   private apiUrl = 'http://localhost:3000/api';
 
   constructor(
@@ -127,8 +160,7 @@ export class AssetManagementEmpComponent implements OnInit {
     this.isLoading = true;
     Promise.all([
       this.fetchMyAssets(),
-      this.fetchRaisedIssues(),
-      this.fetchHrResponses()
+      this.fetchMyTicketsWithUpdates()
     ]).finally(() => {
       this.isLoading = false;
     });
@@ -157,22 +189,23 @@ export class AssetManagementEmpComponent implements OnInit {
     });
   }
 
-  // Fetch tickets raised by logged-in user
-  fetchRaisedIssues(): Promise<void> {
+  // Fetch tickets with latest updates for logged-in user
+  fetchMyTicketsWithUpdates(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.http.get<any>(`${this.apiUrl}/maintenance_tickets?reported_by=${this.user.email}`)
+      this.http.get<any>(`${this.apiUrl}/employee/tickets-with-updates?reported_by=${this.user.email}`)
         .subscribe({
           next: (response) => {
             if (response.success) {
-              this.raisedIssues = response.data;
-              console.log('Raised issues loaded:', this.raisedIssues);
+              this.myTicketsWithUpdates = response.data;
+              this.applyTicketFilters(); // Apply filters after fetching data
+              console.log('My tickets with updates loaded:', this.myTicketsWithUpdates);
             } else {
               console.error('Failed to fetch tickets:', response.message);
             }
             resolve();
           },
           error: (err: HttpErrorResponse) => {
-            console.error('Error fetching raised issues:', err);
+            console.error('Error fetching tickets with updates:', err);
             this.showErrorMessage('Failed to load your tickets. Please try again.');
             reject(err);
           }
@@ -180,133 +213,298 @@ export class AssetManagementEmpComponent implements OnInit {
     });
   }
 
-  // Fetch HR responses for logged-in user
-  fetchHrResponses(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.http.get<any>(`${this.apiUrl}/hr-responses?email=${this.user.email}`)
-        .subscribe({
-          next: (response) => {
-            if (response.success) {
-              this.hrResponses = response.data;
-              console.log('HR responses loaded:', this.hrResponses);
-            } else {
-              console.error('Failed to fetch HR responses:', response.message);
-            }
-            resolve();
-          },
-          error: (err: HttpErrorResponse) => {
-            console.error('Error fetching HR responses:', err);
-            this.showErrorMessage('Failed to load HR responses. Please try again.');
-            reject(err);
+  // ==================== FILTER METHODS ====================
+
+  applyTicketFilters(): void {
+    let filtered = [...this.myTicketsWithUpdates];
+
+    // Search filter
+    if (this.ticketFilters.search.trim()) {
+      const searchTerm = this.ticketFilters.search.toLowerCase().trim();
+      filtered = filtered.filter(ticket => 
+        ticket.ticket_id.toLowerCase().includes(searchTerm) ||
+        ticket.issue_description.toLowerCase().includes(searchTerm) ||
+        ticket.asset_id.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    // Status filter
+    if (this.ticketFilters.status) {
+      filtered = filtered.filter(ticket => ticket.status === this.ticketFilters.status);
+    }
+
+    // Date range filter
+    if (this.ticketFilters.fromDate) {
+      const fromDate = new Date(this.ticketFilters.fromDate);
+      fromDate.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(ticket => new Date(ticket.created_at) >= fromDate);
+    }
+
+    if (this.ticketFilters.toDate) {
+      const toDate = new Date(this.ticketFilters.toDate);
+      toDate.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(ticket => new Date(ticket.created_at) <= toDate);
+    }
+
+    this.filteredTickets = filtered;
+  }
+
+  clearAllFilters(): void {
+    this.ticketFilters = {
+      search: '',
+      status: '',
+      fromDate: null,
+      toDate: null
+    };
+    this.applyTicketFilters();
+  }
+
+  clearFilter(filterName: keyof TicketFilters): void {
+    switch (filterName) {
+      case 'search':
+        this.ticketFilters.search = '';
+        break;
+      case 'status':
+        this.ticketFilters.status = '';
+        break;
+      case 'fromDate':
+        this.ticketFilters.fromDate = null;
+        break;
+      case 'toDate':
+        this.ticketFilters.toDate = null;
+        break;
+    }
+    this.applyTicketFilters();
+  }
+
+  setQuickDateFilter(period: string): void {
+    const now = new Date();
+    let fromDate: Date;
+
+    switch (period) {
+      case 'today':
+        fromDate = new Date(now);
+        fromDate.setHours(0, 0, 0, 0);
+        this.ticketFilters.fromDate = fromDate;
+        this.ticketFilters.toDate = new Date(now);
+        break;
+      case 'week':
+        fromDate = new Date(now);
+        fromDate.setDate(now.getDate() - now.getDay()); // Start of week (Sunday)
+        fromDate.setHours(0, 0, 0, 0);
+        this.ticketFilters.fromDate = fromDate;
+        this.ticketFilters.toDate = new Date(now);
+        break;
+      case 'month':
+        fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        this.ticketFilters.fromDate = fromDate;
+        this.ticketFilters.toDate = new Date(now);
+        break;
+      case 'quarter':
+        const quarter = Math.floor(now.getMonth() / 3);
+        fromDate = new Date(now.getFullYear(), quarter * 3, 1);
+        this.ticketFilters.fromDate = fromDate;
+        this.ticketFilters.toDate = new Date(now);
+        break;
+    }
+    this.applyTicketFilters();
+  }
+
+  hasActiveFilters(): boolean {
+    return !!(
+      this.ticketFilters.search ||
+      this.ticketFilters.status ||
+      this.ticketFilters.fromDate ||
+      this.ticketFilters.toDate
+    );
+  }
+
+  // ==================== TICKET MENU MANAGEMENT ====================
+
+  toggleTicketMenu(ticketId: string): void {
+    if (this.openTicketMenuId === ticketId) {
+      this.openTicketMenuId = null;
+    } else {
+      this.openTicketMenuId = ticketId;
+    }
+  }
+
+  closeTicketMenu(): void {
+    this.openTicketMenuId = null;
+  }
+
+  // ==================== TICKET UPDATE FUNCTIONALITY ====================
+
+  openUpdateTicketModal(ticket: any): void {
+    this.selectedTicketForUpdate = ticket;
+    this.ticketUpdateRequest = {
+      ticketId: ticket.ticket_id,
+      message: '',
+      proof: null
+    };
+    this.isUpdateTicketModalOpen = true;
+  }
+
+  closeUpdateTicketModal(): void {
+    this.isUpdateTicketModalOpen = false;
+    this.selectedTicketForUpdate = null;
+    this.resetUpdateForm();
+  }
+
+  resetUpdateForm(): void {
+    this.ticketUpdateRequest = {
+      ticketId: '',
+      message: '',
+      proof: null
+    };
+    this.selectedUpdateFile = null;
+    this.updateFileError = '';
+  }
+
+  onUpdateFileSelected(event: any): void {
+    const file = event.target.files[0];
+    this.updateFileError = '';
+    
+    if (file) {
+      // Check file size (5MB limit)
+      if (file.size > 5242880) {
+        this.updateFileError = 'File size exceeds 5MB limit. Please choose a smaller file.';
+        event.target.value = '';
+        this.selectedUpdateFile = null;
+        return;
+      }
+
+      // Check file type
+      const allowedTypes = ['image/', 'video/'];
+      const isValidType = allowedTypes.some(type => file.type.startsWith(type));
+      
+      if (!isValidType) {
+        this.updateFileError = 'Invalid file type. Only images and videos are allowed.';
+        event.target.value = '';
+        this.selectedUpdateFile = null;
+        return;
+      }
+
+      this.selectedUpdateFile = file;
+      console.log('Update file selected:', file.name, 'Size:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+    }
+  }
+
+  submitTicketUpdate(): void {
+    if (!this.ticketUpdateRequest.message) {
+      this.showErrorMessage('Please provide a message for the update.');
+      return;
+    }
+
+    if (this.updateFileError) {
+      this.showErrorMessage('Please fix the file upload error before submitting.');
+      return;
+    }
+
+    this.isSubmittingUpdate = true;
+
+    // Create form data for file upload
+    const formData = new FormData();
+    formData.append('ticket_id', this.ticketUpdateRequest.ticketId);
+    formData.append('message', this.ticketUpdateRequest.message);
+    formData.append('updated_by', this.user.email);
+    
+    if (this.selectedUpdateFile) {
+      formData.append('files', this.selectedUpdateFile);
+    }
+
+    this.http.post<any>(`${this.apiUrl}/employee/update-ticket`, formData).subscribe({
+      next: (response) => {
+        this.isSubmittingUpdate = false;
+        if (response.success) {
+          this.showSuccessMessage('Ticket updated successfully!');
+          this.closeUpdateTicketModal();
+          this.fetchMyTicketsWithUpdates(); // Refresh the tickets list
+          
+          // Refresh activity logs if we're on that tab
+          if (this.activeTab === 'activity-logs') {
+            setTimeout(() => {
+              this.loadActivityLogsByTicket();
+            }, 1000);
           }
-        });
+        } else {
+          this.showErrorMessage('Failed to update ticket: ' + response.message);
+        }
+      },
+      error: (err: HttpErrorResponse) => {
+        this.isSubmittingUpdate = false;
+        console.error('Error updating ticket:', err);
+        let errorMessage = 'Failed to update ticket. Please try again.';
+        
+        if (err.error && err.error.message) {
+          errorMessage = err.error.message;
+        } else if (err.status === 413) {
+          errorMessage = 'File too large. Please choose a smaller file.';
+        }
+        
+        this.showErrorMessage(errorMessage);
+      }
     });
   }
 
-  // ==================== EMPLOYEE ACTIVITY LOGS METHODS ====================
+  // ==================== ACTIVITY LOGS BY TICKET ====================
 
-  /**
-   * Load activity logs for the logged-in employee
-   */
-  loadEmployeeActivityLogs(): void {
-    this.isLoadingEmployeeActivityLogs = true;
+  loadActivityLogsByTicket(): void {
+    this.isLoadingActivityLogs = true;
     
-    this.http.get<{ success: boolean; data: ActivityLog[] }>
-      (`${this.apiUrl}/employee/activity-logs?employee_email=${this.user.email}`)
+    this.http.get<{ success: boolean; data: TicketActivityGroup[] }>
+      (`${this.apiUrl}/employee/activity-logs-by-ticket?employee_email=${this.user.email}`)
       .subscribe({
         next: (response) => {
           if (response.success) {
-            this.employeeActivityLogs = response.data;
-            console.log('Employee activity logs loaded:', this.employeeActivityLogs);
+            this.groupedActivityLogs = response.data;
+            console.log('Grouped activity logs loaded:', this.groupedActivityLogs);
           } else {
-            console.error('Failed to load employee activity logs');
-            this.employeeActivityLogs = [];
+            console.error('Failed to load grouped activity logs');
+            this.groupedActivityLogs = [];
           }
-          this.isLoadingEmployeeActivityLogs = false;
+          this.isLoadingActivityLogs = false;
         },
         error: (error: HttpErrorResponse) => {
-          console.error('Error loading employee activity logs:', error);
-          this.employeeActivityLogs = [];
-          this.isLoadingEmployeeActivityLogs = false;
+          console.error('Error loading grouped activity logs:', error);
+          this.groupedActivityLogs = [];
+          this.isLoadingActivityLogs = false;
           this.showErrorMessage('Failed to load activity logs. Please try again.');
         }
       });
   }
 
-  /**
-   * Toggle additional data visibility for an employee activity
-   */
-  toggleEmployeeAdditionalData(activityId: number): void {
-    if (this.expandedEmployeeActivityIds.has(activityId)) {
-      this.expandedEmployeeActivityIds.delete(activityId);
+  toggleTicketActivities(ticketId: string): void {
+    if (this.expandedTicketIds.has(ticketId)) {
+      this.expandedTicketIds.delete(ticketId);
     } else {
-      this.expandedEmployeeActivityIds.add(activityId);
+      this.expandedTicketIds.add(ticketId);
     }
   }
 
-  /**
-   * Format additional data for display
-   */
-  formatAdditionalData(additionalData: any): string {
-    if (!additionalData) return '';
-    
-    try {
-      if (typeof additionalData === 'string') {
-        additionalData = JSON.parse(additionalData);
-      }
-      return JSON.stringify(additionalData, null, 2);
-    } catch (e) {
-      return additionalData.toString();
+  toggleActivityAdditionalData(activityId: number): void {
+    if (this.expandedActivityIds.has(activityId)) {
+      this.expandedActivityIds.delete(activityId);
+    } else {
+      this.expandedActivityIds.add(activityId);
     }
-  }
-
-  /**
-   * Get action type display name
-   */
-  getActionTypeDisplayName(actionType: string): string {
-    const actionTypeMap: { [key: string]: string } = {
-      'asset_allocated': 'Asset Allocated to You',
-      'ticket_raised': 'You Raised a Ticket',
-      'ticket_responded': 'HR Responded to Your Ticket',
-      'asset_returned': 'You Returned an Asset',
-      'asset_updated': 'Your Asset was Updated',
-      'ticket_updated': 'Your Ticket was Updated'
-    };
-    
-    return actionTypeMap[actionType] || actionType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-  }
-
-  /**
-   * Get action type color class
-   */
-  getActionTypeColorClass(actionType: string): string {
-    const colorMap: { [key: string]: string } = {
-      'asset_allocated': 'bg-green-100 text-green-600',
-      'ticket_raised': 'bg-blue-100 text-blue-600',
-      'ticket_responded': 'bg-purple-100 text-purple-600',
-      'asset_returned': 'bg-yellow-100 text-yellow-600',
-      'asset_updated': 'bg-orange-100 text-orange-600',
-      'ticket_updated': 'bg-indigo-100 text-indigo-600'
-    };
-    
-    return colorMap[actionType] || 'bg-gray-100 text-gray-600';
-  }
-
-  /**
-   * Track by function for activity logs performance
-   */
-  trackByActivityId(index: number, activity: ActivityLog): number {
-    return activity.id;
   }
 
   // Tab navigation
   setActiveTab(tab: string): void {
     this.activeTab = tab;
     
-    // Load activity logs when switching to activity logs tab
-    if (tab === 'activity-logs' && this.employeeActivityLogs.length === 0) {
-      this.loadEmployeeActivityLogs();
+    // Load data when switching tabs
+    if (tab === 'activity-logs' && this.groupedActivityLogs.length === 0) {
+      this.loadActivityLogsByTicket();
+    } else if (tab === 'my-tickets') {
+      this.fetchMyTicketsWithUpdates();
     }
+  }
+
+  // Refresh methods
+  refreshTickets(): void {
+    this.fetchMyTicketsWithUpdates();
   }
 
   // Modal management
@@ -427,12 +625,12 @@ export class AssetManagementEmpComponent implements OnInit {
         if (response.success) {
           this.showSuccessMessage('Ticket raised successfully!');
           this.closeRaiseTicketModal();
-          this.fetchRaisedIssues(); // Refresh the tickets list
+          this.fetchMyTicketsWithUpdates(); // Refresh the tickets list
           
           // Refresh activity logs if we're on that tab
           if (this.activeTab === 'activity-logs') {
             setTimeout(() => {
-              this.loadEmployeeActivityLogs();
+              this.loadActivityLogsByTicket();
             }, 1000);
           }
         } else {
@@ -466,12 +664,12 @@ export class AssetManagementEmpComponent implements OnInit {
         next: (response) => {
           if (response.success) {
             this.showSuccessMessage('Ticket cancelled successfully!');
-            this.fetchRaisedIssues(); // Refresh the tickets list
+            this.fetchMyTicketsWithUpdates(); // Refresh the tickets list
             
             // Refresh activity logs if we're on that tab
             if (this.activeTab === 'activity-logs') {
               setTimeout(() => {
-                this.loadEmployeeActivityLogs();
+                this.loadActivityLogsByTicket();
               }, 1000);
             }
           } else {
@@ -491,59 +689,77 @@ export class AssetManagementEmpComponent implements OnInit {
       });
   }
 
+  // ==================== UTILITY METHODS ====================
+
+  /**
+   * Format additional data for display
+   */
+  formatAdditionalData(additionalData: any): string {
+    if (!additionalData) return '';
+    
+    try {
+      if (typeof additionalData === 'string') {
+        additionalData = JSON.parse(additionalData);
+      }
+      return JSON.stringify(additionalData, null, 2);
+    } catch (e) {
+      return additionalData.toString();
+    }
+  }
+
+  /**
+   * Get action type display name
+   */
+  getActionTypeDisplayName(actionType: string): string {
+    const actionTypeMap: { [key: string]: string } = {
+      'asset_allocated': 'Asset Allocated',
+      'ticket_created': 'Ticket Created',
+      'ticket_updated': 'Ticket Updated',
+      'ticket_responded': 'HR Response',
+      'ticket_cancelled': 'Ticket Cancelled',
+      'evidence_uploaded': 'Evidence Uploaded',
+      'employee_response': 'Employee Response',
+      'status_updated': 'Status Updated',
+      'information_request': 'Information Request',
+      'hr_response': 'HR Response'
+    };
+    
+    return actionTypeMap[actionType] || actionType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  /**
+   * Get action type color class
+   */
+  getActionTypeColorClass(actionType: string): string {
+    const colorMap: { [key: string]: string } = {
+      'asset_allocated': 'bg-green-500',
+      'ticket_created': 'bg-blue-500',
+      'ticket_updated': 'bg-indigo-500',
+      'ticket_responded': 'bg-purple-500',
+      'ticket_cancelled': 'bg-red-500',
+      'evidence_uploaded': 'bg-yellow-500',
+      'employee_response': 'bg-green-500',
+      'status_updated': 'bg-orange-500',
+      'information_request': 'bg-purple-500',
+      'hr_response': 'bg-purple-500'
+    };
+    
+    return colorMap[actionType] || 'bg-gray-500';
+  }
+
   // Utility methods for user feedback
   private showSuccessMessage(message: string): void {
-    // You can replace this with a proper toast/notification service
     alert('✅ ' + message);
   }
 
   private showErrorMessage(message: string): void {
-    // You can replace this with a proper toast/notification service
     alert('❌ ' + message);
-  }
-
-  // Format file size for display
-  formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }
-
-  // Get status color class
-  getStatusColorClass(status: string): string {
-    switch (status.toLowerCase()) {
-      case 'allocated':
-      case 'resolved':
-        return 'bg-green-100 text-green-800';
-      case 'open':
-      case 'in progress':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'available':
-        return 'bg-blue-100 text-blue-800';
-      case 'cancelled':
-      case 'maintenance':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
   }
 
   // Logout
   logout(): void {
     this.authService.clearUser();
     this.router.navigate(['/login']);
-  }
-
-  // Refresh data manually
-  refreshData(): void {
-    this.loadInitialData();
-    if (this.activeTab === 'activity-logs') {
-      this.loadEmployeeActivityLogs();
-    }
   }
 
   // Track by functions for ngFor performance
@@ -555,187 +771,19 @@ export class AssetManagementEmpComponent implements OnInit {
     return ticket.ticket_id;
   }
 
-  trackByResponseId(index: number, response: HRResponse): string {
-    return response.ticket_id;
+  trackByActivityId(index: number, activity: ActivityLog): number {
+    return activity.id;
   }
 
-  // ==================== UTILITY METHODS ====================
-
-  /**
-   * Get activity type icon SVG path
-   */
-  getActivityTypeIcon(actionType: string): string {
-    if (actionType.includes('asset')) {
-      return 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z';
-    } else if (actionType.includes('ticket')) {
-      return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
-    } else {
-      return 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z';
-    }
-  }
-
-  /**
-   * Get human readable time difference
-   */
-  getTimeAgo(date: Date): string {
-    const now = new Date();
-    const diff = now.getTime() - new Date(date).getTime();
-    const minutes = Math.floor(diff / (1000 * 60));
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    
-    return this.datePipe.transform(date, 'mediumDate') || '';
-  }
-
-  /**
-   * Get activity priority based on type
-   */
-  getActivityPriority(actionType: string): 'high' | 'medium' | 'low' {
-    if (actionType.includes('responded') || actionType.includes('escalated')) {
-      return 'high';
-    } else if (actionType.includes('ticket') || actionType.includes('allocated')) {
-      return 'medium';
-    } else {
-      return 'low';
-    }
-  }
-
-  /**
-   * Check if activity is recent (within last 24 hours)
-   */
-  isRecentActivity(date: Date): boolean {
-    const now = new Date();
-    const activityDate = new Date(date);
-    const diff = now.getTime() - activityDate.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    return hours < 24;
-  }
-
-  /**
-   * Get activity summary for dashboard/overview
-   */
-  getActivitySummary(): { total: number; recent: number; types: { [key: string]: number } } {
-    const summary = {
-      total: this.employeeActivityLogs.length,
-      recent: 0,
-      types: {} as { [key: string]: number }
-    };
-
-    this.employeeActivityLogs.forEach(activity => {
-      // Count recent activities
-      if (this.isRecentActivity(activity.created_at)) {
-        summary.recent++;
-      }
-
-      // Count by type
-      const type = this.getActionTypeDisplayName(activity.action_type);
-      summary.types[type] = (summary.types[type] || 0) + 1;
-    });
-
-    return summary;
-  }
-
-  /**
-   * Export activity logs to CSV
-   */
-  exportActivityLogs(): void {
-    if (this.employeeActivityLogs.length === 0) {
-      this.showErrorMessage('No activity logs to export.');
-      return;
-    }
-
-    const csvData = this.prepareActivityLogsForExport();
-    this.downloadCSV(csvData, `my_activity_logs_${new Date().toISOString().split('T')[0]}.csv`);
-  }
-
-  /**
-   * Prepare activity logs data for CSV export
-   */
-  private prepareActivityLogsForExport(): string {
-    const headers = [
-      'Date',
-      'Time',
-      'Activity Type',
-      'Description',
-      'Asset ID',
-      'Ticket ID',
-      'Performed By'
-    ];
-
-    const rows: string[] = [headers.join(',')];
-
-    this.employeeActivityLogs.forEach(activity => {
-      const date = new Date(activity.created_at);
-      const row = [
-        `"${date.toLocaleDateString()}"`,
-        `"${date.toLocaleTimeString()}"`,
-        `"${this.getActionTypeDisplayName(activity.action_type)}"`,
-        `"${activity.action_description || ''}"`,
-        `"${activity.asset_id || ''}"`,
-        `"${activity.ticket_id || ''}"`,
-        `"${activity.performed_by_name || activity.performed_by || ''}"`
-      ];
-      rows.push(row.join(','));
-    });
-
-    return rows.join('\n');
-  }
-
-  /**
-   * Download CSV file
-   */
-  private downloadCSV(csvContent: string, fileName: string): void {
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', fileName);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  }
-
-  /**
-   * Filter activities by type
-   */
-  filterActivitiesByType(type: string): ActivityLog[] {
-    if (!type) return this.employeeActivityLogs;
-    
-    return this.employeeActivityLogs.filter(activity => 
-      activity.action_type.includes(type.toLowerCase())
-    );
-  }
-
-  /**
-   * Filter activities by date range
-   */
-  filterActivitiesByDateRange(startDate: Date, endDate: Date): ActivityLog[] {
-    return this.employeeActivityLogs.filter(activity => {
-      const activityDate = new Date(activity.created_at);
-      return activityDate >= startDate && activityDate <= endDate;
-    });
-  }
-
-  /**
-   * Search activities by description
-   */
-  searchActivities(searchTerm: string): ActivityLog[] {
-    if (!searchTerm.trim()) return this.employeeActivityLogs;
-    
-    const term = searchTerm.toLowerCase().trim();
-    return this.employeeActivityLogs.filter(activity => 
-      activity.action_description.toLowerCase().includes(term) ||
-      (activity.asset_id && activity.asset_id.toLowerCase().includes(term)) ||
-      (activity.ticket_id && activity.ticket_id.toLowerCase().includes(term))
-    );
+  trackByTicketGroupId(index: number, group: TicketActivityGroup): string {
+    return group.ticket_id;
   }
 }
+
+
+
+
+
+
+
+

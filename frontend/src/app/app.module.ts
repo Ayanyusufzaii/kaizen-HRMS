@@ -47,6 +47,8 @@ import { HrProfileComponent } from './component/hr/hr-profile/hr-profile.compone
 import { EmpSideNavbarComponent } from './component/emp/emp-side-navbar/emp-side-navbar.component';
 import { HrModule } from './component/hr/hr.module';
 
+
+import { MatIconModule } from '@angular/material/icon';
 @NgModule({
   declarations: [
     AppComponent,
@@ -99,6 +101,7 @@ import { HrModule } from './component/hr/hr.module';
     MatExpansionModule,
     CommonModule,
     HrModule,
+    MatIconModule,
   ],
   providers: [],
   bootstrap: [AppComponent],
