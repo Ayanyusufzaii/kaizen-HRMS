@@ -1,4 +1,6 @@
+require('dotenv').config();
 const express = require('express');
+
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const mysql = require('mysql2');
@@ -24,10 +26,14 @@ app.use('/uploads', express.static(uploadDir));
 
 // MySQL Database Connection
 const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: '000000',
-  database: 'hrms',
+  host: process.env.DB_HOST,        
+  user: process.env.DB_USER,       
+  password: process.env.DB_PASS,   
+  database: process.env.DB_NAME,   
+  port: 3306,
+  ssl: {
+    rejectUnauthorized: true 
+  }
 });
 
 db.connect((err) => {

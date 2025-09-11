@@ -83,7 +83,6 @@ interface Ticket {
   reported_by: string;
   issue_description: string;
   status: string;
-  priority: string;
   created_at: string;
   assigned_to?: string;
   resolution_notes?: string;
@@ -188,7 +187,7 @@ export class AssetManagementComponent implements OnInit {
   // Ticket Management - Updated for real data
   tickets: Ticket[] = [];
   ticketDataSource: MatTableDataSource<Ticket>;
-  ticketDisplayedColumns: string[] = ['ticket_id', 'employee_id', 'employee_name', 'asset_id', 'asset_model', 'status', 'priority', 'issue_description', 'evidence', 'actions'];
+  ticketDisplayedColumns: string[] = ['ticket_id', 'employee_id', 'employee_name', 'asset_id', 'asset_model', 'status', 'issue_description', 'evidence', 'actions'];
   selectedTicket: Ticket | null = null;
   ticketResponse = '';
   informationRequest = '';

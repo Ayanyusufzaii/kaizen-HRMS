@@ -446,7 +446,6 @@ router.post('/raise-ticket', upload.array('files', 5), async (req, res) => {
       asset_id,
       reported_by,
       issue_description,
-      priority = 'Medium'
     } = req.body;
 
     if (!asset_id || !reported_by || !issue_description) {
@@ -477,11 +476,11 @@ router.post('/raise-ticket', upload.array('files', 5), async (req, res) => {
 
       const insertTicketSql = `
         INSERT INTO maintenance_tickets (
-          ticket_id, asset_id, reported_by, issue_description, status, priority, created_at
+          ticket_id, asset_id, reported_by, issue_description, status, created_at
         ) VALUES (?, ?, ?, ?, 'Open', ?, ?)
       `;
 
-      db.query(insertTicketSql, [ticket_id, asset_id, reported_by, issue_description, priority, created_at], async (err, result) => {
+      db.query(insertTicketSql, [ticket_id, asset_id, reported_by, issue_description , created_at], async (err, result) => {
         if (err) {
           console.error('Error inserting ticket:', err);
           return res.status(500).json({ success: false, message: 'Failed to create ticket' });
@@ -499,7 +498,6 @@ router.post('/raise-ticket', upload.array('files', 5), async (req, res) => {
             employee.name,
             {
               issue_description: issue_description,
-              priority: priority,
               asset_id: asset_id,
               has_evidence: req.files && req.files.length > 0,
               evidence_count: req.files ? req.files.length : 0
@@ -1818,7 +1816,6 @@ router.get('/hr/tickets', (req, res) => {
       mt.reported_by,
       mt.issue_description,
       mt.status,
-      mt.priority,
       mt.created_at,
       mt.assigned_to,
       mt.resolution_notes,
@@ -2525,7 +2522,6 @@ router.get('/hr/tickets-enhanced', (req, res) => {
       mt.reported_by,
       mt.issue_description,
       mt.status,
-      mt.priority,
       mt.created_at,
       mt.assigned_to,
       mt.resolution_notes,
